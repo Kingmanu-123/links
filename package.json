@@ -1,1 +1,8 @@
-
+{
+  "name": "supabase-link-shortener",
+  "version": "1.0.0",
+  "description": "Backend redirect engine",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.43.4"
+  }
+}

@@ -3,6 +3,7 @@
 // ==========================================
 const SUPABASE_URL = "https://jctdtavzpcxnvpebpyqx.supabase.co";
 const SUPABASE_KEY = "sb_publishable_QUrKq5DUY3pwmHv4HEjKCQ_bGFZi4VQ";
+const BASE_URL = "https://links-one-rho.vercel.app";
 
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -23,8 +24,14 @@ const toast = document.getElementById("toast");
 // ==========================================
 // 2. LIFECYCLE ROUTING & APP STARTUP
 // ==========================================
-document.addEventListener("DOMContentLoaded", () => {
-  handleIncomingRedirect();
+document.addEventListener("DOMContentLoaded", async () => {
+  const params = new URLSearchParams(window.location.search);
+  
+  if (params.has("id")) {
+    await handleIncomingRedirect();
+    return; 
+  }
+
   loadLinks();
   createBtn.addEventListener("click", handleCreateLink);
 });
@@ -43,17 +50,22 @@ async function handleIncomingRedirect() {
         .single();
 
       if (data && !error) {
-        // FIXED: Await the update so the browser doesn't cancel the request on redirect
-        await supabaseClient
-          .from("links")
-          .update({ clicks: data.clicks + 1 })
-          .eq("code", code.toLowerCase());
+        // FIXED: Isolated try/catch prevents analytics failures from blocking user redirection
+        try {
+          await supabaseClient
+            .from("links")
+            .update({ clicks: data.clicks + 1 })
+            .eq("code", code.toLowerCase());
+        } catch (analyticsErr) {
+          console.error("Non-blocking analytics tracking failure:", analyticsErr);
+        }
 
         let destination = data.original.trim();
         if (!/^https?:\/\//i.test(destination)) {
           destination = "https://" + destination;
         }
-        window.location.href = destination;
+        
+        window.location.replace(destination);
       } else {
         showToast("Error: Tracking code not found.");
       }
@@ -79,7 +91,6 @@ function normalizeUrl(raw) {
 }
 
 function randomCode(length = 6) {
-  // Omitted ambiguous letters/numbers ('l', 'o', 'z') to increase legibility
   const chars = "abcdefghijkmnpqrstuvwxy23456789";
   let code = "";
   for (let i = 0; i < length; i++) {
@@ -161,7 +172,6 @@ async function handleCreateLink() {
 // 5. DATA MUTATIONS & SUPABASE HANDLERS
 // ==========================================
 async function checkCodeExists(code) {
-  // Use head: true to do a lightweight existence ping without wire overhead
   const { error, count } = await supabaseClient
     .from("links")
     .select("code", { count: "exact", head: true })
@@ -178,7 +188,7 @@ async function loadLinks() {
   const { data, error } = await supabaseClient
     .from("links")
     .select("*")
-    .order("created", { ascending: false }); // FIXED: Changed "created_at" to "created"
+    .order("created", { ascending: false });
 
   if (error) {
     console.error("Failed to recover log archive:", error);
@@ -300,7 +310,7 @@ function renderTable() {
 }
 
 function displayReceipt(link) {
-  const fullShortUrl = `${window.location.origin}${window.location.pathname}?id=${link.code}`;
+  const fullShortUrl = `${BASE_URL}/?id=${link.code}`;
 
   document.getElementById("gen-short").innerText = fullShortUrl;
   document.getElementById("gen-orig").innerText = link.original;

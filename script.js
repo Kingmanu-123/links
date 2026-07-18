@@ -43,12 +43,11 @@ async function handleIncomingRedirect() {
         .single();
 
       if (data && !error) {
-        // Fire click tracker asynchronously without 'await' so the user redirects instantly
-        supabaseClient
+        // FIXED: Await the update so the browser doesn't cancel the request on redirect
+        await supabaseClient
           .from("links")
           .update({ clicks: data.clicks + 1 })
-          .eq("code", code.toLowerCase())
-          .catch(err => console.error("Background analytics sync failed:", err));
+          .eq("code", code.toLowerCase());
 
         let destination = data.original.trim();
         if (!/^https?:\/\//i.test(destination)) {
@@ -179,7 +178,7 @@ async function loadLinks() {
   const { data, error } = await supabaseClient
     .from("links")
     .select("*")
-    .order("created_at", { ascending: false });
+    .order("created", { ascending: false }); // FIXED: Changed "created_at" to "created"
 
   if (error) {
     console.error("Failed to recover log archive:", error);

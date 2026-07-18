@@ -24,56 +24,10 @@ const toast = document.getElementById("toast");
 // ==========================================
 // 2. LIFECYCLE ROUTING & APP STARTUP
 // ==========================================
-document.addEventListener("DOMContentLoaded", async () => {
-  const params = new URLSearchParams(window.location.search);
-  
-  if (params.has("id")) {
-    await handleIncomingRedirect();
-    return; 
-  }
-
+document.addEventListener("DOMContentLoaded", () => {
   loadLinks();
   createBtn.addEventListener("click", handleCreateLink);
 });
-
-// Intercepts "?id=alias" parameters to forward requests instantly
-async function handleIncomingRedirect() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const code = urlParams.get("id");
-
-  if (code) {
-    try {
-      const { data, error } = await supabaseClient
-        .from("links")
-        .select("original, clicks")
-        .eq("code", code.toLowerCase())
-        .single();
-
-      if (data && !error) {
-        // FIXED: Isolated try/catch prevents analytics failures from blocking user redirection
-        try {
-          await supabaseClient
-            .from("links")
-            .update({ clicks: data.clicks + 1 })
-            .eq("code", code.toLowerCase());
-        } catch (analyticsErr) {
-          console.error("Non-blocking analytics tracking failure:", analyticsErr);
-        }
-
-        let destination = data.original.trim();
-        if (!/^https?:\/\//i.test(destination)) {
-          destination = "https://" + destination;
-        }
-        
-        window.location.replace(destination);
-      } else {
-        showToast("Error: Tracking code not found.");
-      }
-    } catch (err) {
-      console.error("Routing execution failure:", err);
-    }
-  }
-}
 
 // ==========================================
 // 3. URL NORMALIZATION & CODE GENERATION
@@ -310,7 +264,8 @@ function renderTable() {
 }
 
 function displayReceipt(link) {
-  const fullShortUrl = `${BASE_URL}/?id=${link.code}`;
+  // FIXED: Explicitly uses the production BASE_URL structure 
+  const fullShortUrl = `${BASE_URL}/api/redirect?id=${link.code}`;
 
   document.getElementById("gen-short").innerText = fullShortUrl;
   document.getElementById("gen-orig").innerText = link.original;

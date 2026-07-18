@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LINK TRACKER - URL Shortener & Analytics</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Supabase JS Client library -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Header Section -->
+    <header>
+      <h1>LINK TRACKER</h1>
+      <p class="subtitle">URL Shortener & Analytics</p>
+    </header>
+
+    <!-- Main Workspace Split -->
+    <div class="workspace">
+      
+      <!-- Left Panel: Input Form -->
+      <section class="form-panel">
+        <h2>Create New Tracking Link</h2>
+        
+        <div class="input-group">
+          <label for="url-input">Original URL</label>
+          <input type="text" id="url-input" placeholder="https://example.com/deep/path/to/resource">
+          <span class="error-msg" id="url-error" style="display: none;">Please enter a valid target URL.</span>
+        </div>
+
+        <div class="input-group">
+          <label for="alias-input">Custom Short Code (Optional)</label>
+          <input type="text" id="alias-input" placeholder="promo2026">
+          <span class="error-msg" id="alias-error" style="display: none;"></span>
+        </div>
+
+        <button id="create-btn">
+          <span>Create Link</span>
+          <span class="btn-arrow">&#10142;</span>
+        </button>
+      </section>
+
+      <!-- Right Panel: Tracking History Receipt Container -->
+      <section class="receipt-panel">
+        <div id="generated-wrap" style="display: none;">
+          <div class="receipt-card">
+            <div class="receipt-header">
+              <h3>Tracking Link Created</h3>
+              <span class="badge">LINK-TRK</span>
+            </div>
+            
+            <div class="receipt-body">
+              <div class="receipt-row">
+                <span class="label">Tracking Link:</span>
+                <span class="value highlighting" id="gen-short"></span>
+              </div>
+              <div class="receipt-row">
+                <span class="label">Original URL:</span>
+                <span class="value truncate" id="gen-orig"></span>
+              </div>
+              <div class="receipt-row">
+                <span class="label">Created:</span>
+                <span class="value" id="gen-time"></span>
+              </div>
+            </div>
+
+            <!-- Stylized Barcode Container -->
+            <div class="barcode-area" id="gen-barcode"></div>
+
+            <div class="receipt-actions">
+              <button id="copy-btn" class="btn-secondary">Copy Link</button>
+              <button id="open-btn" class="btn-primary">Visit URL</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Bottom Section: Tracking History Log -->
+    <main class="history-section">
+      <div class="history-header">
+        <h2>Tracking History</h2>
+      </div>
+
+      <!-- Scrollable Table Alternative for Responsive Layouts -->
+      <div class="history-list" id="table-body">
+        <!-- JavaScript injects .history-row records here dynamically -->
+      </div>
+
+      <footer class="history-footer">
+        <span id="footer-count">0 links created</span>
+      </footer>
+    </main>
+  </div>
+
+  <!-- Global Toast Alert Mechanism -->
+  <div id="toast" class="toast-alert"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>

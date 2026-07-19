@@ -3,36 +3,49 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LINK TRACKER - URL Shortener & Analytics</title>
+  <title>LINK TRACKER — URL Shortener &amp; Analytics</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
   <link rel="stylesheet" href="style.css">
   <!-- Supabase JS Client library -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
+  <!-- Ambient dispatch-terminal scanline -->
+  <div class="scanline" aria-hidden="true"></div>
+
   <div class="container">
+
     <!-- Header Section -->
     <header>
-      <h1>LINK TRACKER</h1>
-      <p class="subtitle">URL Shortener & Analytics</p>
+      <div class="header-top">
+        <span class="terminal-tag">DISPATCH TERMINAL</span>
+        <span class="terminal-tag terminal-tag--status"><span class="pulse-dot"></span>LIVE</span>
+      </div>
+      <h1>LINK TRACKER<span class="cursor-blink" aria-hidden="true">_</span></h1>
+      <p class="subtitle">URL Shortener &amp; Analytics</p>
     </header>
 
     <!-- Main Workspace Split -->
     <div class="workspace">
-      
+
       <!-- Left Panel: Input Form -->
       <section class="form-panel">
-        <h2>Create New Tracking Link</h2>
-        
+        <h2><span class="panel-index">01</span> Create New Tracking Link</h2>
+
         <div class="input-group">
           <label for="url-input">Original URL</label>
-          <input type="text" id="url-input" placeholder="https://example.com/deep/path/to/resource">
+          <input type="text" id="url-input" placeholder="https://example.com/deep/path/to/resource" autocomplete="off">
           <span class="error-msg" id="url-error" style="display: none;">Please enter a valid target URL.</span>
         </div>
 
         <div class="input-group">
           <label for="alias-input">Custom Short Code (Optional)</label>
-          <input type="text" id="alias-input" placeholder="promo2026">
+          <input type="text" id="alias-input" placeholder="promo2026" autocomplete="off">
           <span class="error-msg" id="alias-error" style="display: none;"></span>
         </div>
 
@@ -46,22 +59,23 @@
       <section class="receipt-panel">
         <div id="generated-wrap" style="display: none;">
           <div class="receipt-card">
+
             <div class="receipt-header">
               <h3>Tracking Link Created</h3>
               <span class="badge">LINK-TRK</span>
             </div>
-            
+
             <div class="receipt-body">
               <div class="receipt-row">
-                <span class="label">Tracking Link:</span>
+                <span class="label">Tracking Link</span>
                 <span class="value highlighting" id="gen-short"></span>
               </div>
               <div class="receipt-row">
-                <span class="label">Original URL:</span>
+                <span class="label">Original URL</span>
                 <span class="value truncate" id="gen-orig"></span>
               </div>
               <div class="receipt-row">
-                <span class="label">Created:</span>
+                <span class="label">Created</span>
                 <span class="value" id="gen-time"></span>
               </div>
             </div>
@@ -75,6 +89,11 @@
             </div>
           </div>
         </div>
+
+        <div class="receipt-placeholder" id="receipt-placeholder">
+          <span class="placeholder-icon" aria-hidden="true">&#128230;</span>
+          <p>Your tracking receipt will print here once a link is created.</p>
+        </div>
       </section>
 
     </div>
@@ -82,7 +101,7 @@
     <!-- Bottom Section: Tracking History Log -->
     <main class="history-section">
       <div class="history-header">
-        <h2>Tracking History</h2>
+        <h2><span class="panel-index">02</span> Tracking History</h2>
       </div>
 
       <!-- Scrollable Table Alternative for Responsive Layouts -->

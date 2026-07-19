@@ -1,79 +1,235 @@
-/* ==========================================
-   GLOBAL RESET & THEMING
-   ========================================== */
+/* ==========================================================================
+   LINK TRACKER — Dispatch Terminal Redesign
+   Design tokens, dark terminal shell, kraft-paper ticket panels
+   ========================================================================== */
+
+:root {
+  /* ---- Palette ---- */
+  --ink-deep:      #12151b;   /* page shell background */
+  --ink-panel:     #1b2029;   /* dark panel surface */
+  --ink-panel-alt: #232a36;   /* dark panel hover/alt surface */
+  --ink-border:    #2e3644;   /* hairline borders on dark surfaces */
+
+  --paper:         #f2e9d8;   /* kraft ticket paper */
+  --paper-alt:     #ece0ca;   /* slightly deeper paper tone */
+  --paper-line:    #d9cbaa;   /* divider lines on paper */
+  --paper-shadow:  rgba(18, 21, 27, 0.35);
+
+  --stamp-orange:  #d9541f;   /* primary accent / CTA ink */
+  --stamp-orange-dark: #b8420f;
+  --stamp-green:   #3f7d58;   /* active / success ink */
+  --stamp-green-bg: rgba(63, 125, 88, 0.14);
+  --stamp-red:     #b83227;   /* danger / delete ink */
+
+  --text-on-dark:        #eef0f3;
+  --text-muted-dark:     #8b93a3;
+  --text-on-paper:       #241d12;
+  --text-muted-paper:    #7a6f57;
+
+  /* ---- Type ---- */
+  --font-display: 'Space Grotesk', 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* ---- Misc ---- */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --transition-fast: 0.15s ease;
+  --transition-med: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+html {
+  color-scheme: dark;
 }
 
 body {
-  background-color: #f4f6f8;
-  color: #1a202c;
-  padding: 2rem 1rem;
+  font-family: var(--font-body);
+  background:
+    radial-gradient(circle at 15% 0%, rgba(217, 84, 31, 0.08), transparent 45%),
+    radial-gradient(circle at 85% 20%, rgba(63, 125, 88, 0.06), transparent 40%),
+    var(--ink-deep);
+  color: var(--text-on-dark);
+  padding: 2.5rem 1.25rem 4rem;
   display: flex;
   justify-content: center;
+  position: relative;
+  min-height: 100vh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--stamp-orange);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Ambient scanline across the top of the terminal */
+.scanline {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--stamp-orange), transparent);
+  opacity: 0.6;
+  animation: scan 5s linear infinite;
+  pointer-events: none;
+  z-index: 50;
+}
+
+@keyframes scan {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
 .container {
   width: 100%;
-  max-width: 1040px;
+  max-width: 1080px;
   display: flex;
   flex-direction: column;
   gap: 2rem;
 }
 
-/* Header styling */
+/* ==========================================================================
+   Header — terminal readout
+   ========================================================================== */
+
 header {
-  border-bottom: 2px dashed #cbd5e1;
-  padding-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px dashed var(--ink-border);
+}
+
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.terminal-tag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-muted-dark);
+}
+
+.terminal-tag--status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--stamp-green);
+}
+
+.pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--stamp-green);
+  box-shadow: 0 0 0 0 rgba(63, 125, 88, 0.6);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(63, 125, 88, 0.55); }
+  70%  { box-shadow: 0 0 0 7px rgba(63, 125, 88, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(63, 125, 88, 0); }
 }
 
 header h1 {
-  font-size: 2.25rem;
-  font-weight: 800;
-  letter-spacing: -0.05em;
-  color: #0f172a;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5vw, 2.85rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-on-dark);
+}
+
+.cursor-blink {
+  color: var(--stamp-orange);
+  animation: blink 1.1s step-end infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
 }
 
 .subtitle {
-  font-size: 1rem;
-  color: #64748b;
-  margin-top: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--stamp-orange);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.12em;
 }
 
-/* ==========================================
-   WORKSPACE SPLIT LAYOUT
-   ========================================== */
+/* ==========================================================================
+   Workspace split layout
+   ========================================================================== */
+
 .workspace {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1.5rem;
+  align-items: start;
 }
 
 @media (min-width: 768px) {
   .workspace {
-    grid-template-columns: 1.2fr 1fr;
+    grid-template-columns: 1.1fr 1fr;
   }
 }
 
-/* Form Panel Details */
+.panel-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--stamp-orange);
+  border: 1px solid var(--stamp-orange);
+  border-radius: var(--radius-sm);
+  padding: 0.1rem 0.4rem;
+  margin-right: 0.5rem;
+}
+
+/* ---- Form panel: dark terminal input surface ---- */
+
 .form-panel {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 1.5rem;
+  background: var(--ink-panel);
+  border: 1px solid var(--ink-border);
+  border-radius: var(--radius-md);
+  padding: 1.75rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.4rem;
 }
 
 .form-panel h2 {
-  font-size: 1.25rem;
-  color: #1e293b;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-on-dark);
+  display: flex;
+  align-items: center;
 }
 
 .input-group {
@@ -83,56 +239,72 @@ header h1 {
 }
 
 .input-group label {
-  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
   font-weight: 600;
-  color: #475569;
+  color: var(--text-muted-dark);
   text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .input-group input {
-  padding: 0.75rem;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  font-size: 1rem;
-  background-color: #f8fafc;
-  transition: all 0.2s ease;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--ink-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.95rem;
+  font-family: var(--font-mono);
+  background-color: var(--ink-deep);
+  color: var(--text-on-dark);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.input-group input::placeholder {
+  color: #4d5566;
 }
 
 .input-group input:focus {
   outline: none;
-  border-color: #2563eb;
-  background-color: #ffffff;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  border-color: var(--stamp-orange);
+  box-shadow: 0 0 0 3px rgba(217, 84, 31, 0.18);
 }
 
 .error-msg {
-  font-size: 0.8rem;
-  color: #dc2626;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: #ff8a71;
   font-weight: 500;
 }
 
-/* Action Call to Buttons */
+/* Create button */
+
 #create-btn {
-  background-color: #0f172a;
-  color: #ffffff;
+  background-color: var(--stamp-orange);
+  color: #1a0e08;
   border: none;
-  border-radius: 6px;
-  padding: 0.85rem 1.25rem;
-  font-weight: 600;
+  border-radius: var(--radius-sm);
+  padding: 0.9rem 1.25rem;
+  font-family: var(--font-display);
+  font-weight: 700;
   font-size: 1rem;
   cursor: pointer;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
 }
 
 #create-btn:hover:not(:disabled) {
-  background-color: #1e293b;
+  background-color: #ef632f;
+  transform: translateY(-1px);
+}
+
+#create-btn:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 #create-btn:disabled {
-  background-color: #94a3b8;
+  background-color: var(--ink-border);
+  color: var(--text-muted-dark);
   cursor: not-allowed;
 }
 
@@ -140,52 +312,108 @@ header h1 {
   font-size: 1.1rem;
 }
 
-/* ==========================================
-   TRACKING CARD RECEIPT STYLING
-   ========================================== */
+/* ==========================================================================
+   Receipt panel — kraft paper ticket
+   ========================================================================== */
+
 .receipt-panel {
   display: flex;
   flex-direction: column;
+  position: relative;
+  min-height: 100%;
+}
+
+.receipt-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 260px;
+  border: 1px dashed var(--ink-border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted-dark);
+  text-align: center;
+  padding: 2rem;
+}
+
+.placeholder-icon {
+  font-size: 1.75rem;
+  opacity: 0.6;
+}
+
+.receipt-placeholder p {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  max-width: 26ch;
+}
+
+/* When a receipt has been generated (JS sets #generated-wrap to display:block),
+   hide the placeholder without needing to touch script.js */
+.receipt-panel:has(#generated-wrap[style*="display: block"]) .receipt-placeholder {
+  display: none;
 }
 
 .receipt-card {
-  background: #ffffff;
-  border: 2px solid #0f172a;
-  border-radius: 8px;
-  padding: 1.5rem;
-  box-shadow: 4px 4px 0px 0px #0f172a;
+  background: var(--paper);
+  color: var(--text-on-paper);
+  border-radius: var(--radius-md);
+  padding: 1.75rem;
+  box-shadow: 0 18px 40px var(--paper-shadow);
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  position: relative;
+  /* Perforated tear-edge along the top */
+  background-image: radial-gradient(circle, var(--ink-deep) 4px, transparent 4.5px);
+  background-size: 18px 18px;
+  background-position: top -9px left 0;
+  background-repeat: repeat-x;
+  padding-top: 2rem;
+}
+
+.receipt-card::before {
+  content: '';
+  position: absolute;
+  top: 9px;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--paper-line);
 }
 
 .receipt-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #e2e8f0;
-  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--paper-line);
+  padding-bottom: 0.85rem;
 }
 
 .receipt-header h3 {
-  font-size: 1.1rem;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
 .badge {
-  background: #f1f5f9;
-  border: 1px solid #cbd5e1;
-  padding: 0.2rem 0.5rem;
-  font-size: 0.75rem;
+  background: var(--stamp-orange);
+  color: #1a0e08;
+  border: none;
+  padding: 0.25rem 0.55rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
   font-weight: 700;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.05em;
 }
 
 .receipt-body {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.85rem;
 }
 
 .receipt-row {
@@ -195,22 +423,25 @@ header h1 {
 }
 
 .receipt-row .label {
-  font-size: 0.75rem;
-  color: #64748b;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-muted-paper);
   text-transform: uppercase;
   font-weight: 600;
+  letter-spacing: 0.08em;
 }
 
 .receipt-row .value {
-  font-size: 0.95rem;
-  color: #0f172a;
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  color: var(--text-on-paper);
   word-break: break-all;
 }
 
 .receipt-row .value.highlighting {
   font-weight: 700;
-  color: #2563eb;
-  font-size: 1.05rem;
+  color: var(--stamp-orange-dark);
+  font-size: 1.02rem;
 }
 
 .truncate {
@@ -221,21 +452,21 @@ header h1 {
   display: block;
 }
 
-/* Procedural Barcode Simulation Rendering Engine */
+/* Barcode strip */
 .barcode-area {
   display: flex;
   align-items: stretch;
   justify-content: center;
   gap: 2px;
-  height: 44px;
-  background-color: #ffffff;
+  height: 46px;
+  background-color: rgba(36, 29, 18, 0.03);
   padding: 4px 0;
-  border-left: 1px solid #e2e8f0;
-  border-right: 1px solid #e2e8f0;
+  border-top: 1px dashed var(--paper-line);
+  border-bottom: 1px dashed var(--paper-line);
 }
 
 .barcode-area div {
-  background-color: #0f172a;
+  background-color: var(--text-on-paper);
   border-radius: 1px;
 }
 
@@ -243,73 +474,100 @@ header h1 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
-  margin-top: 0.25rem;
+  margin-top: 0.1rem;
 }
 
 .receipt-actions button {
-  padding: 0.65rem;
-  font-weight: 600;
-  border-radius: 6px;
+  padding: 0.7rem;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.88rem;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 0.9rem;
   text-align: center;
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.receipt-actions button:hover {
+  transform: translateY(-1px);
 }
 
 .btn-primary {
-  background: #2563eb;
-  color: #ffffff;
+  background: var(--text-on-paper);
+  color: var(--paper);
   border: none;
 }
 
 .btn-primary:hover {
-  background: #1d4ed8;
+  background: #362a17;
 }
 
 .btn-secondary {
-  background: #ffffff;
-  color: #475569;
-  border: 1px solid #cbd5e1;
+  background: transparent;
+  color: var(--text-on-paper);
+  border: 1px solid var(--text-on-paper);
 }
 
 .btn-secondary:hover {
-  background: #f8fafc;
-  border-color: #94a3b8;
+  background: rgba(36, 29, 18, 0.06);
 }
 
-/* ==========================================
-   TRACKING HISTORY SECTION
-   ========================================== */
+/* ==========================================================================
+   Tracking history — cargo manifest
+   ========================================================================== */
+
 .history-section {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  background: var(--ink-panel);
+  border: 1px solid var(--ink-border);
+  border-radius: var(--radius-md);
   display: flex;
   flex-direction: column;
 }
 
 .history-header {
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 1.4rem 1.75rem;
+  border-bottom: 1px dashed var(--ink-border);
 }
 
 .history-header h2 {
-  font-size: 1.25rem;
-  color: #1e293b;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
 }
 
 .history-list {
-  max-height: 400px;
+  max-height: 420px;
   overflow-y: auto;
 }
 
-/* History Grid Row Block Structures */
+.history-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.history-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.history-list::-webkit-scrollbar-thumb {
+  background: var(--ink-border);
+  border-radius: 4px;
+}
+
+/* History rows — manifest entries */
 .history-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid #f1f5f9;
+  padding: 1rem 1.75rem;
+  border-bottom: 1px solid var(--ink-border);
   gap: 1rem;
+  transition: background var(--transition-fast);
+}
+
+.history-row:hover {
+  background: var(--ink-panel-alt);
 }
 
 .history-row:last-child {
@@ -325,10 +583,11 @@ header h1 {
 }
 
 .cell-main .short-code {
+  font-family: var(--font-mono);
   font-weight: 700;
-  color: #2563eb;
+  color: var(--stamp-orange);
   cursor: pointer;
-  font-size: 1.05rem;
+  font-size: 1.02rem;
   width: max-content;
 }
 
@@ -337,43 +596,45 @@ header h1 {
 }
 
 .cell-main .orig-url {
-  font-size: 0.85rem;
-  color: #64748b;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-muted-dark);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .cell-analytics {
-  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
   font-weight: 700;
-  color: #0f172a;
-  background: #f8fafc;
-  padding: 0.4rem 0.6rem;
-  border-radius: 4px;
-  border: 1px solid #e2e8f0;
+  color: var(--text-on-dark);
+  background: var(--ink-deep);
+  padding: 0.4rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--ink-border);
   white-space: nowrap;
 }
 
 .cell-analytics .status-label {
-  color: #10b981;
-  font-size: 0.75rem;
-  margin-right: 0.25rem;
+  color: var(--stamp-green);
+  font-size: 0.72rem;
+  margin-right: 0.3rem;
 }
 
 .cell-del {
   background: transparent;
   border: none;
-  color: #94a3b8;
+  color: var(--text-muted-dark);
   font-size: 1.4rem;
   cursor: pointer;
   line-height: 1;
   padding: 0.25rem;
-  transition: color 0.1s ease;
+  transition: color var(--transition-fast);
 }
 
 .cell-del:hover {
-  color: #dc2626;
+  color: var(--stamp-red);
 }
 
 .empty-state {
@@ -382,47 +643,129 @@ header h1 {
   align-items: center;
   justify-content: center;
   padding: 4rem 2rem;
-  color: #64748b;
+  color: var(--text-muted-dark);
   gap: 0.5rem;
 }
 
 .empty-state .icon {
   font-size: 2rem;
+  opacity: 0.7;
 }
 
 .history-footer {
-  background-color: #f8fafc;
-  border-top: 1px solid #e2e8f0;
-  padding: 0.75rem 1.5rem;
-  font-size: 0.85rem;
+  background-color: var(--ink-deep);
+  border-top: 1px dashed var(--ink-border);
+  padding: 0.85rem 1.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
   font-weight: 600;
-  color: #64748b;
-  border-radius: 0 0 8px 8px;
+  color: var(--text-muted-dark);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
 }
 
-/* ==========================================
-   TOAST NOTIFICATION ENGINE
-   ========================================== */
+/* ==========================================================================
+   Toast notification
+   ========================================================================== */
+
 .toast-alert {
   position: fixed;
   bottom: 1.5rem;
   left: 50%;
   transform: translateX(-50%) translateY(100px);
-  background-color: #0f172a;
-  color: #ffffff;
-  padding: 0.75rem 1.5rem;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  font-weight: 500;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background-color: var(--paper);
+  color: var(--text-on-paper);
+  padding: 0.8rem 1.5rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
   z-index: 9999;
   opacity: 0;
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+  transition: transform var(--transition-med), opacity var(--transition-med);
   pointer-events: none;
   white-space: nowrap;
+  border-left: 4px solid var(--stamp-orange);
 }
 
 .toast-alert.show {
   transform: translateX(-50%) translateY(0);
   opacity: 1;
+}
+
+/* ==========================================================================
+   Responsive — 320 through 1920
+   ========================================================================== */
+
+@media (max-width: 900px) {
+  .container {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  body {
+    padding: 1.5rem 0.9rem 3rem;
+  }
+
+  .container {
+    gap: 1.5rem;
+  }
+
+  header h1 {
+    font-size: 1.75rem;
+  }
+
+  .form-panel,
+  .history-header {
+    padding: 1.25rem;
+  }
+
+  .receipt-card {
+    padding: 1.25rem;
+    padding-top: 1.75rem;
+  }
+
+  .history-row {
+    padding: 0.85rem 1.1rem;
+    flex-wrap: wrap;
+  }
+
+  .cell-analytics {
+    order: 3;
+  }
+
+  .receipt-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .history-footer {
+    padding: 0.75rem 1.1rem;
+  }
+}
+
+@media (max-width: 380px) {
+  header h1 {
+    font-size: 1.5rem;
+  }
+
+  .terminal-tag {
+    font-size: 0.62rem;
+  }
+
+  .input-group input {
+    font-size: 0.88rem;
+  }
+}
+
+@media (min-width: 1400px) {
+  .container {
+    max-width: 1200px;
+  }
+}
+
+/* Prevent horizontal scroll at any width */
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
 }

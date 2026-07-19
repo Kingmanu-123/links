@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LINK TRACKER — URL Shortener &amp; Analytics</title>
+  <title>Link Tracker — URL Shortener &amp; Analytics</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="style.css">
   <!-- Supabase JS Client library -->
@@ -15,107 +15,208 @@
 </head>
 <body>
 
-  <!-- Ambient dispatch-terminal scanline -->
-  <div class="scanline" aria-hidden="true"></div>
+  <!-- Ambient starfield + glow backdrop -->
+  <div class="cosmos" aria-hidden="true">
+    <div class="glow glow--a"></div>
+    <div class="glow glow--b"></div>
+    <div class="stars"></div>
+    <div class="mountains mountains--back"></div>
+    <div class="mountains mountains--front"></div>
+    <div class="snowfall">
+      <div class="snow-layer snow-layer--1"></div>
+      <div class="snow-layer snow-layer--2"></div>
+      <div class="snow-layer snow-layer--3"></div>
+    </div>
+  </div>
 
-  <div class="container">
+  <!-- ============================================================ -->
+  <!-- DASHBOARD VIEW                                                -->
+  <!-- ============================================================ -->
+  <div class="page" id="dashboard-view">
+    <div class="shell">
 
-    <!-- Header Section -->
-    <header>
-      <div class="header-top">
-        <span class="terminal-tag">DISPATCH TERMINAL</span>
-        <span class="terminal-tag terminal-tag--status"><span class="pulse-dot"></span>LIVE</span>
+      <!-- Header -->
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-icon">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.32-1.32" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="brand-text">
+            <h1>Link <span class="accent">Tracker</span></h1>
+            <p>URL Shortener &amp; Analytics</p>
+          </div>
+        </div>
+
+        <div class="header-search search-wrap search-wrap--header">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <input type="text" id="header-search-input" placeholder="Search links...">
+          <button id="header-search-go" class="header-search-go" aria-label="Search" title="Search">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+
+        <div class="stat-pills">
+          <div class="stat-pill">
+            <span class="stat-pill-icon stat-pill-icon--teal">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.32-1.32" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="stat-pill-value" id="stat-active">0</span>
+            <span class="stat-pill-label">Active&nbsp;Links</span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-pill-icon stat-pill-icon--purple">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="stat-pill-value" id="stat-clicks">0</span>
+            <span class="stat-pill-label">Total&nbsp;Clicks</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Workspace -->
+      <div class="workspace">
+
+        <!-- Create form -->
+        <section class="panel create-panel">
+          <h2><span class="icon-badge">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+          </span>Create New Tracking Link</h2>
+
+          <div class="field">
+            <label for="url-input">Original URL</label>
+            <div class="input-wrap">
+              <span class="input-icon">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.32-1.32" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
+              <input type="text" id="url-input" placeholder="https://example.com" autocomplete="off">
+            </div>
+            <span class="field-error" id="url-error" hidden>Please enter a valid target URL.</span>
+          </div>
+
+          <div class="field">
+            <label for="alias-input">Custom Short Code (Optional)</label>
+            <div class="input-wrap">
+              <span class="input-icon input-icon--hash">#</span>
+              <input type="text" id="alias-input" placeholder="promo2026" autocomplete="off">
+            </div>
+            <span class="field-error" id="alias-error" hidden></span>
+          </div>
+
+          <button id="create-btn" class="btn-cta">
+            <span id="create-btn-label">Create Link</span>
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </section>
+
+        <!-- Preview / receipt -->
+        <section class="panel preview-panel">
+          <div class="preview-placeholder" id="preview-placeholder">
+            <span class="ph-icon">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.32-1.32" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <p>Create a tracking link to see it here.</p>
+          </div>
+
+          <div class="preview-created" id="preview-created" hidden>
+            <div class="preview-check">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <h3>Active Link Created!</h3>
+            <p class="preview-sub">Your link is ready to share</p>
+
+            <div class="preview-url-box">
+              <span id="gen-short"></span>
+              <button id="copy-inline-btn" aria-label="Copy link" title="Copy link">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M5 15V6a2 2 0 0 1 2-2h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+
+            <div class="preview-grid">
+              <div><label>Original URL</label><span id="gen-orig" class="truncate"></span></div>
+              <div><label>Short Code</label><span id="gen-code"></span></div>
+              <div><label>Created At</label><span id="gen-time"></span></div>
+              <div><label>Status</label><span class="badge-active"><i></i>Active</span></div>
+            </div>
+
+            <div class="preview-actions">
+              <button id="copy-btn" class="btn-outline">Copy Link</button>
+              <button id="open-btn" class="btn-solid">Visit Link</button>
+            </div>
+          </div>
+        </section>
       </div>
-      <h1>LINK TRACKER<span class="cursor-blink" aria-hidden="true">_</span></h1>
-      <p class="subtitle">URL Shortener &amp; Analytics</p>
-    </header>
 
-    <!-- Main Workspace Split -->
-    <div class="workspace">
-
-      <!-- Left Panel: Input Form -->
-      <section class="form-panel">
-        <h2><span class="panel-index">01</span> Create New Tracking Link</h2>
-
-        <div class="input-group">
-          <label for="url-input">Original URL</label>
-          <input type="text" id="url-input" placeholder="https://example.com/deep/path/to/resource" autocomplete="off">
-          <span class="error-msg" id="url-error" style="display: none;">Please enter a valid target URL.</span>
+      <!-- Tracking history -->
+      <section class="panel history-panel">
+        <div class="history-head">
+          <h2>Tracking History</h2>
+          <button id="view-all-btn" class="btn-ghost">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/></svg>
+            View All Links
+          </button>
         </div>
 
-        <div class="input-group">
-          <label for="alias-input">Custom Short Code (Optional)</label>
-          <input type="text" id="alias-input" placeholder="promo2026" autocomplete="off">
-          <span class="error-msg" id="alias-error" style="display: none;"></span>
-        </div>
+        <div class="link-list" id="table-body"><!-- rows injected by script.js --></div>
 
-        <button id="create-btn">
-          <span>Create Link</span>
-          <span class="btn-arrow">&#10142;</span>
-        </button>
+        <footer class="history-foot">
+          <span id="footer-count">0 links created</span>
+        </footer>
       </section>
 
-      <!-- Right Panel: Tracking History Receipt Container -->
-      <section class="receipt-panel">
-        <div id="generated-wrap" style="display: none;">
-          <div class="receipt-card">
+    </div>
+  </div>
 
-            <div class="receipt-header">
-              <h3>Tracking Link Created</h3>
-              <span class="badge">LINK-TRK</span>
-            </div>
+  <!-- ============================================================ -->
+  <!-- ALL LINKS VIEW                                                -->
+  <!-- ============================================================ -->
+  <div class="page" id="all-links-view" hidden>
+    <div class="shell shell--narrow">
 
-            <div class="receipt-body">
-              <div class="receipt-row">
-                <span class="label">Tracking Link</span>
-                <span class="value highlighting" id="gen-short"></span>
-              </div>
-              <div class="receipt-row">
-                <span class="label">Original URL</span>
-                <span class="value truncate" id="gen-orig"></span>
-              </div>
-              <div class="receipt-row">
-                <span class="label">Created</span>
-                <span class="value" id="gen-time"></span>
-              </div>
-            </div>
+      <div class="all-links-top">
+        <button id="back-btn" class="btn-back">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19 12H5M11 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Home
+        </button>
+        <div class="brand brand--sm">
+          <div class="brand-icon brand-icon--sm">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.32-1.32" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <h2>Link <span class="accent">Tracker</span></h2>
+        </div>
+      </div>
 
-            <!-- Stylized Barcode Container -->
-            <div class="barcode-area" id="gen-barcode"></div>
+      <section class="panel all-links-panel">
+        <h2 class="all-links-title">All Tracking Links</h2>
 
-            <div class="receipt-actions">
-              <button id="copy-btn" class="btn-secondary">Copy Link</button>
-              <button id="open-btn" class="btn-primary">Visit URL</button>
+        <div class="search-wrap">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <input type="text" id="search-input" placeholder="Search by short code or URL...">
+        </div>
+
+        <div class="controls-row">
+          <span class="filter-pill" id="filter-pill">All Links · 0</span>
+
+          <div class="sort-wrap">
+            <button id="sort-btn" class="sort-btn" aria-haspopup="true" aria-expanded="false">
+              <span id="sort-label">Newest First</span>
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="sort-menu" id="sort-menu" hidden>
+              <button data-sort="newest">Newest First</button>
+              <button data-sort="oldest">Oldest First</button>
+              <button data-sort="most">Most Clicks</button>
+              <button data-sort="least">Least Clicks</button>
+              <button data-sort="az">A → Z</button>
             </div>
           </div>
         </div>
 
-        <div class="receipt-placeholder" id="receipt-placeholder">
-          <span class="placeholder-icon" aria-hidden="true">&#128230;</span>
-          <p>Your tracking receipt will print here once a link is created.</p>
-        </div>
+        <div class="link-list link-list--full" id="all-table-body"><!-- rows injected by script.js --></div>
       </section>
-
     </div>
-
-    <!-- Bottom Section: Tracking History Log -->
-    <main class="history-section">
-      <div class="history-header">
-        <h2><span class="panel-index">02</span> Tracking History</h2>
-      </div>
-
-      <!-- Scrollable Table Alternative for Responsive Layouts -->
-      <div class="history-list" id="table-body">
-        <!-- JavaScript injects .history-row records here dynamically -->
-      </div>
-
-      <footer class="history-footer">
-        <span id="footer-count">0 links created</span>
-      </footer>
-    </main>
   </div>
 
-  <!-- Global Toast Alert Mechanism -->
+  <!-- Global Toast Alert -->
   <div id="toast" class="toast-alert"></div>
 
   <script src="script.js"></script>

@@ -230,8 +230,33 @@
 
         <div class="link-list link-list--full" id="all-table-body"><!-- rows injected by script.js --></div>
       </section>
+    </div>
+  </div>
 
-      <section class="panel all-links-panel users-panel">
+  <!-- ============================================================ -->
+  <!-- ALL USER LISTINGS VIEW                                        -->
+  <!-- ============================================================ -->
+  <div class="page" id="all-users-view" hidden>
+    <div class="shell shell--narrow">
+
+      <div class="all-links-top">
+        <button id="users-home-btn" class="btn-back" title="Back to Home">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19 12H5M11 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Home
+        </button>
+        <button id="users-links-btn" class="btn-back" title="Back to All Tracking Links">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/></svg>
+          All Tracking Links
+        </button>
+        <div class="brand brand--sm">
+          <div class="brand-icon brand-icon--sm">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.32-1.32" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <h2>Link <span class="accent">Tracker</span></h2>
+        </div>
+      </div>
+
+      <section class="panel all-links-panel">
         <h2 class="all-links-title">All User Listings</h2>
 
         <div class="search-wrap">
@@ -242,15 +267,26 @@
         <div class="controls-row">
           <span class="filter-pill" id="users-filter-pill">All Users · 0</span>
 
-          <div class="sort-wrap">
-            <button id="users-sort-btn" class="sort-btn" aria-haspopup="true" aria-expanded="false">
-              <span id="users-sort-label">Newest First</span>
-              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </button>
-            <div class="sort-menu" id="users-sort-menu" hidden>
-              <button data-usersort="newest">Newest First</button>
-              <button data-usersort="oldest">Oldest First</button>
-              <button data-usersort="country">Country A → Z</button>
+          <div class="controls-actions">
+            <div class="sort-wrap">
+              <button id="users-link-filter-btn" class="sort-btn" aria-haspopup="true" aria-expanded="false">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 5h16l-6 8v5l-4 2v-7L4 5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+                <span id="users-link-filter-label">All Links</span>
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div class="sort-menu" id="users-link-filter-menu" hidden><!-- link options injected by script.js --></div>
+            </div>
+
+            <div class="sort-wrap">
+              <button id="users-sort-btn" class="sort-btn" aria-haspopup="true" aria-expanded="false">
+                <span id="users-sort-label">Newest First</span>
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div class="sort-menu" id="users-sort-menu" hidden>
+                <button data-usersort="newest">Newest First</button>
+                <button data-usersort="oldest">Oldest First</button>
+                <button data-usersort="country">Country A → Z</button>
+              </div>
             </div>
           </div>
         </div>

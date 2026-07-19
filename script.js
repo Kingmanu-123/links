@@ -9,8 +9,12 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Global state
 let links = [];
+let clicksLog = [];          // flat list of every visitor click, newest first
 let sortMode = "newest";     // newest | oldest | most | least | az
 let searchTerm = "";
+let userSortMode = "newest"; // newest | oldest | country
+let userSearchTerm = "";
+const expandedRows = new Set(); // link codes currently expanded on-page
 
 // DOM Elements — dashboard
 const urlInput = document.getElementById("url-input");
@@ -28,8 +32,11 @@ const statActive = document.getElementById("stat-active");
 const statClicks = document.getElementById("stat-clicks");
 const headerSearchInput = document.getElementById("header-search-input");
 const headerSearchGo = document.getElementById("header-search-go");
+const themeToggleBtn = document.getElementById("theme-toggle-btn");
+const brandSubtitle = document.getElementById("brand-subtitle");
 
 // Decorative country flags shown (randomly, but consistently per link) on row icons
+// when no real visitor geo-data exists yet for that link.
 const FLAG_CODES = ["us", "gb", "de", "fr", "in", "jp", "br", "ca", "au", "nl", "se", "mx", "kr", "it", "es", "sg"];
 
 function flagForCode(code) {
@@ -55,6 +62,14 @@ const sortBtn = document.getElementById("sort-btn");
 const sortLabel = document.getElementById("sort-label");
 const sortMenu = document.getElementById("sort-menu");
 
+// DOM Elements — all user listings
+const allUsersBody = document.getElementById("all-users-body");
+const usersSearchInput = document.getElementById("users-search-input");
+const usersFilterPill = document.getElementById("users-filter-pill");
+const usersSortBtn = document.getElementById("users-sort-btn");
+const usersSortLabel = document.getElementById("users-sort-label");
+const usersSortMenu = document.getElementById("users-sort-menu");
+
 const SORT_LABELS = {
   newest: "Newest First",
   oldest: "Oldest First",
@@ -63,18 +78,33 @@ const SORT_LABELS = {
   az: "A → Z"
 };
 
+const USER_SORT_LABELS = {
+  newest: "Newest First",
+  oldest: "Oldest First",
+  country: "Country A → Z"
+};
+
 // ==========================================
 // 2. LIFECYCLE ROUTING & APP STARTUP
 // ==========================================
 document.addEventListener("DOMContentLoaded", () => {
+  initTheme();
   loadLinks();
+  loadClicks();
+
   createBtn.addEventListener("click", handleCreateLink);
   viewAllBtn.addEventListener("click", () => switchView("all"));
   backBtn.addEventListener("click", () => switchView("dashboard"));
+  themeToggleBtn.addEventListener("click", toggleTheme);
 
   searchInput.addEventListener("input", (e) => {
     searchTerm = e.target.value.trim().toLowerCase();
     renderAllLinks();
+  });
+
+  usersSearchInput.addEventListener("input", (e) => {
+    userSearchTerm = e.target.value.trim().toLowerCase();
+    renderAllUsers();
   });
 
   const runHeaderSearch = () => {
@@ -106,10 +136,30 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Close any open dropdown (sort menu or row kebab menus) on outside click
+  usersSortBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    usersSortMenu.hidden = !usersSortMenu.hidden;
+    usersSortBtn.setAttribute("aria-expanded", String(!usersSortMenu.hidden));
+  });
+
+  usersSortMenu.querySelectorAll("button[data-usersort]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      userSortMode = btn.dataset.usersort;
+      usersSortLabel.textContent = USER_SORT_LABELS[userSortMode];
+      usersSortMenu.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      usersSortMenu.hidden = true;
+      usersSortBtn.setAttribute("aria-expanded", "false");
+      renderAllUsers();
+    });
+  });
+
+  // Close any open dropdown (sort menus or row kebab menus) on outside click
   document.addEventListener("click", () => {
     sortMenu.hidden = true;
     sortBtn.setAttribute("aria-expanded", "false");
+    usersSortMenu.hidden = true;
+    usersSortBtn.setAttribute("aria-expanded", "false");
     closeAllKebabMenus();
   });
 });
@@ -120,8 +170,38 @@ function switchView(view) {
   dashboardView.hidden = goingToAll;
   if (goingToAll) {
     renderAllLinks();
+    renderAllUsers();
     window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
   }
+}
+
+// ==========================================
+// 2b. THEME SWITCHER (Winter Peaks ⇄ Aurora Glass)
+// ==========================================
+function initTheme() {
+  const saved = localStorage.getItem("lt-theme");
+  if (saved === "aurora") applyTheme("aurora", false);
+}
+
+function toggleTheme() {
+  const isAurora = document.body.classList.contains("theme-aurora");
+  applyTheme(isAurora ? "winter" : "aurora", true);
+}
+
+function applyTheme(name, animate) {
+  const btn = themeToggleBtn;
+  if (animate) {
+    btn.classList.add("theme-pulse");
+    setTimeout(() => btn.classList.remove("theme-pulse"), 700);
+  }
+  if (name === "aurora") {
+    document.body.classList.add("theme-aurora");
+    brandSubtitle.textContent = "Aurora Glass · Analytics";
+  } else {
+    document.body.classList.remove("theme-aurora");
+    brandSubtitle.textContent = "URL Shortener & Analytics";
+  }
+  localStorage.setItem("lt-theme", name);
 }
 
 // ==========================================
@@ -250,6 +330,31 @@ async function loadLinks() {
   renderAll();
 }
 
+// Loads the visitor-level analytics captured by api/redirect.js.
+// Gracefully no-ops (rather than throwing) if the "clicks" table hasn't
+// been created yet in Supabase — see supabase_migration.sql.
+async function loadClicks() {
+  const { data, error } = await supabaseClient
+    .from("clicks")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(500);
+
+  if (error) {
+    console.warn("Visitor analytics table not available yet:", error.message);
+    clicksLog = [];
+    return;
+  }
+
+  clicksLog = data || [];
+  renderAll();
+  if (!allLinksView.hidden) renderAllUsers();
+}
+
+function clicksForCode(code) {
+  return clicksLog.filter(c => c.link_code === code);
+}
+
 async function saveLink(link) {
   const { data, error } = await supabaseClient
     .from("links")
@@ -304,6 +409,7 @@ async function deleteLink(code) {
   }
 
   links = links.filter(l => l.code !== code);
+  expandedRows.delete(code);
   renderAll();
   showToast("Tracking link deleted successfully.");
 }
@@ -444,8 +550,111 @@ function buildLinkList(container, list, opts = {}) {
   }
 
   list.forEach(link => {
-    container.appendChild(buildLinkRow(link));
+    container.appendChild(buildLinkItem(link));
   });
+}
+
+// Small glass icon badge helper — used across visitor detail cards
+function glassIcon(label, glowClass, innerSvg) {
+  return `<span class="glass-field-icon ${glowClass}" title="${label}">${innerSvg}</span>`;
+}
+
+const ICONS = {
+  country: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 21s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12Z" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="9" r="2.4" stroke="currentColor" stroke-width="1.8"/></svg>',
+  device: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6.5" y="2.5" width="11" height="19" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M10.5 18.5h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  browser: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15.5 0 18M12 3c-2.5 2.5-2.5 15.5 0 18" stroke="currentColor" stroke-width="1.6"/></svg>',
+  os: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="4" width="18" height="12" rx="1.6" stroke="currentColor" stroke-width="1.8"/><path d="M8 20h8M12 16v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  user: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="8.5" r="3.5" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 20c1.4-3.6 4.5-5.5 7.5-5.5s6.1 1.9 7.5 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  chevron: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+
+function flagImg(countryCode, fallbackSeed) {
+  const code = (countryCode || flagForCode(fallbackSeed) || "us").toLowerCase();
+  return `https://flagcdn.com/w80/${code}.png`;
+}
+
+// Builds one visitor card (used inside an expanded link row and in the
+// "All User Listings" panel).
+function buildVisitorCard(click, opts = {}) {
+  const flag = flagImg(click.country_code, click.visitor_id);
+  const place = [click.city, click.country].filter(Boolean).join(", ") || "Unknown location";
+
+  return `
+    <div class="visitor-card">
+      <div class="visitor-card-top">
+        <span class="visitor-flag" style="background-image:url('${flag}')" title="${escapeHtml(click.country || "Unknown")}"></span>
+        <div class="visitor-place">
+          <span class="visitor-place-main">${escapeHtml(place)}</span>
+          ${opts.showCode ? `<span class="visitor-linkcode">via ${escapeHtml(click.link_code)}</span>` : ""}
+        </div>
+        <button class="visitor-details-toggle" type="button">Details ${ICONS.chevron}</button>
+      </div>
+      <div class="visitor-detail-grid" hidden>
+        <div class="vfield">${glassIcon("Country", "glow-teal", ICONS.country)}<div><label>Country</label><span>${escapeHtml(click.country || "Unknown")}</span></div></div>
+        <div class="vfield">${glassIcon("City", "glow-teal", ICONS.country)}<div><label>City</label><span>${escapeHtml(click.city || "Unknown")}</span></div></div>
+        <div class="vfield">${glassIcon("Device", "glow-purple", ICONS.device)}<div><label>Device</label><span>${escapeHtml(click.device || "Unknown")}</span></div></div>
+        <div class="vfield">${glassIcon("Browser", "glow-amber", ICONS.browser)}<div><label>Browser</label><span>${escapeHtml(click.browser || "Unknown")}</span></div></div>
+        <div class="vfield">${glassIcon("OS", "glow-purple", ICONS.os)}<div><label>OS</label><span>${escapeHtml(click.os || "Unknown")}</span></div></div>
+        <div class="vfield">${glassIcon("Click Time", "glow-teal", ICONS.clock)}<div><label>Click Time</label><span>${escapeHtml(formatDate(click.created_at))}</span></div></div>
+        <div class="vfield vfield--wide">${glassIcon("Visitor ID", "glow-amber", ICONS.user)}<div><label>Visitor ID</label><span class="mono">${escapeHtml(click.visitor_id)}</span></div></div>
+      </div>
+    </div>
+  `;
+}
+
+function wireVisitorCardToggles(root) {
+  root.querySelectorAll(".visitor-details-toggle").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const card = btn.closest(".visitor-card");
+      const grid = card.querySelector(".visitor-detail-grid");
+      const willOpen = grid.hidden;
+      grid.hidden = !willOpen;
+      card.classList.toggle("open", willOpen);
+      btn.classList.toggle("open", willOpen);
+    });
+  });
+}
+
+// A "link item" wraps the compact summary row plus its (optional, on-demand)
+// expanded visitor panel — this two-part structure is what keeps the layout
+// from ever overlapping at narrow viewport widths, since the detail content
+// only ever appears full-width, below the summary line.
+function buildLinkItem(link) {
+  const wrap = document.createElement("div");
+  wrap.className = "link-item";
+
+  const row = buildLinkRow(link);
+  wrap.appendChild(row);
+
+  const recentClicks = clicksForCode(link.code).slice(0, 3);
+  const detail = document.createElement("div");
+  detail.className = "row-detail";
+  detail.hidden = !expandedRows.has(link.code);
+
+  if (recentClicks.length === 0) {
+    detail.innerHTML = `<div class="row-detail-empty">No visitor activity recorded yet for this link.</div>`;
+  } else {
+    detail.innerHTML = `
+      <div class="row-detail-head">Recent visitors</div>
+      <div class="visitor-cards">${recentClicks.map(c => buildVisitorCard(c)).join("")}</div>
+      ${clicksForCode(link.code).length > 3 ? `<button class="link-viewall" data-code="${escapeHtml(link.code)}">View all ${clicksForCode(link.code).length} visitors →</button>` : ""}
+    `;
+    wireVisitorCardToggles(detail);
+    const viewAll = detail.querySelector(".link-viewall");
+    if (viewAll) {
+      viewAll.addEventListener("click", () => {
+        userSearchTerm = link.code.toLowerCase();
+        usersSearchInput.value = link.code;
+        switchView("all");
+        document.getElementById("all-users-body").scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }
+
+  wrap.appendChild(detail);
+  return wrap;
 }
 
 function buildLinkRow(link) {
@@ -454,10 +663,13 @@ function buildLinkRow(link) {
 
   const clickCount = link.clicks || 0;
   const clicksAlignClass = String(clickCount).length <= 2 ? " clicks-center" : "";
-  const flag = flagForCode(link.code);
+  const linkClicks = clicksForCode(link.code);
+  const latest = linkClicks[0];
+  const flag = latest ? (latest.country_code || flagForCode(link.code)) : flagForCode(link.code);
+  const isOpen = expandedRows.has(link.code);
 
   row.innerHTML = `
-    <div class="row-icon row-icon--flag" style="background-image:url('https://flagcdn.com/w80/${flag}.png')" title="${flag.toUpperCase()}"></div>
+    <div class="row-icon row-icon--flag" style="background-image:url('${flagImg(flag, link.code)}')" title="${escapeHtml(flag).toUpperCase()}"></div>
     <div class="row-main">
       <div class="row-code">${escapeHtml(link.code)}</div>
       <div class="row-url">${escapeHtml(link.original)}</div>
@@ -465,14 +677,16 @@ function buildLinkRow(link) {
         <span class="badge-active"><i></i>Active</span>
         <span class="row-date">
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          ${formatDate(link.created)}
+          ${formatDate(latest ? latest.created_at : link.created)}
         </span>
+        ${linkClicks.length ? `<span class="row-visitor-count">${linkClicks.length} visitor${linkClicks.length === 1 ? "" : "s"}</span>` : ""}
       </div>
     </div>
     <div class="row-clicks${clicksAlignClass}">
       <span class="clicks-num">${clickCount.toLocaleString()}</span>
       <span class="clicks-label">CLICKS</span>
     </div>
+    <button class="row-expand-btn ${isOpen ? "open" : ""}" aria-label="Show visitor details" title="Show visitor details">${ICONS.chevron}</button>
     <div class="row-menu">
       <button class="kebab-btn" aria-label="More actions" title="More actions">&#8942;</button>
       <div class="kebab-menu" hidden>
@@ -485,6 +699,17 @@ function buildLinkRow(link) {
 
   const codeEl = row.querySelector(".row-code");
   codeEl.addEventListener("click", () => openLink(link.code));
+
+  const expandBtn = row.querySelector(".row-expand-btn");
+  expandBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const wrap = row.parentElement;
+    const detail = wrap.querySelector(".row-detail");
+    const willOpen = detail.hidden;
+    detail.hidden = !willOpen;
+    expandBtn.classList.toggle("open", willOpen);
+    if (willOpen) expandedRows.add(link.code); else expandedRows.delete(link.code);
+  });
 
   const kebabBtn = row.querySelector(".kebab-btn");
   const kebabMenu = row.querySelector(".kebab-menu");
@@ -517,6 +742,46 @@ function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str == null ? "" : String(str);
   return div.innerHTML;
+}
+
+// ==========================================
+// 6b. ALL USER LISTINGS (flattened visitor feed)
+// ==========================================
+function renderAllUsers() {
+  let list = clicksLog.slice();
+
+  if (userSearchTerm) {
+    list = list.filter(c =>
+      (c.visitor_id || "").toLowerCase().includes(userSearchTerm) ||
+      (c.country || "").toLowerCase().includes(userSearchTerm) ||
+      (c.city || "").toLowerCase().includes(userSearchTerm) ||
+      (c.link_code || "").toLowerCase().includes(userSearchTerm)
+    );
+  }
+
+  switch (userSortMode) {
+    case "oldest":
+      list.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      break;
+    case "country":
+      list.sort((a, b) => (a.country || "").localeCompare(b.country || ""));
+      break;
+    case "newest":
+    default:
+      list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      break;
+  }
+
+  usersFilterPill.textContent = `All Users · ${clicksLog.length}`;
+  allUsersBody.innerHTML = "";
+
+  if (list.length === 0) {
+    allUsersBody.innerHTML = `<div class="empty-state"><span class="icon">&#128100;</span><span>${userSearchTerm ? "No visitors match your search." : "No visitor activity recorded yet. Once someone opens one of your links, they'll show up here."}</span></div>`;
+    return;
+  }
+
+  allUsersBody.innerHTML = list.map(c => buildVisitorCard(c, { showCode: true })).join("");
+  wireVisitorCardToggles(allUsersBody);
 }
 
 // ==========================================

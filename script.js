@@ -51,8 +51,13 @@ function flagForCode(code) {
 // DOM Elements — view switching
 const dashboardView = document.getElementById("dashboard-view");
 const allLinksView = document.getElementById("all-links-view");
+const allUsersView = document.getElementById("all-users-view");
 const viewAllBtn = document.getElementById("view-all-btn");
 const backBtn = document.getElementById("back-btn");
+const usersHomeBtn = document.getElementById("users-home-btn");
+const usersLinksBtn = document.getElementById("users-links-btn");
+
+let currentView = "dashboard"; // dashboard | all | users
 
 // DOM Elements — all links view
 const allTableBody = document.getElementById("all-table-body");
@@ -69,6 +74,12 @@ const usersFilterPill = document.getElementById("users-filter-pill");
 const usersSortBtn = document.getElementById("users-sort-btn");
 const usersSortLabel = document.getElementById("users-sort-label");
 const usersSortMenu = document.getElementById("users-sort-menu");
+const usersLinkFilterBtn = document.getElementById("users-link-filter-btn");
+const usersLinkFilterLabel = document.getElementById("users-link-filter-label");
+const usersLinkFilterMenu = document.getElementById("users-link-filter-menu");
+
+let usersLinkFilterMode = "all"; // "all" or a specific link code
+let pendingVisitorHighlight = null; // { linkCode, visitorId, createdAt } — set right before navigating to the Users page so we can scroll to + expand that exact visit once rendered
 
 const SORT_LABELS = {
   newest: "Newest First",
@@ -95,6 +106,8 @@ document.addEventListener("DOMContentLoaded", () => {
   createBtn.addEventListener("click", handleCreateLink);
   viewAllBtn.addEventListener("click", () => switchView("all"));
   backBtn.addEventListener("click", () => switchView("dashboard"));
+  usersHomeBtn.addEventListener("click", () => switchView("dashboard"));
+  usersLinksBtn.addEventListener("click", () => switchView("all"));
   themeToggleBtn.addEventListener("click", toggleTheme);
 
   searchInput.addEventListener("input", (e) => {
@@ -154,23 +167,76 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  usersLinkFilterBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    usersLinkFilterMenu.hidden = !usersLinkFilterMenu.hidden;
+    usersLinkFilterBtn.setAttribute("aria-expanded", String(!usersLinkFilterMenu.hidden));
+  });
+
   // Close any open dropdown (sort menus or row kebab menus) on outside click
   document.addEventListener("click", () => {
     sortMenu.hidden = true;
     sortBtn.setAttribute("aria-expanded", "false");
     usersSortMenu.hidden = true;
     usersSortBtn.setAttribute("aria-expanded", "false");
+    usersLinkFilterMenu.hidden = true;
+    usersLinkFilterBtn.setAttribute("aria-expanded", "false");
     closeAllKebabMenus();
   });
 });
 
+// Rebuilds the "Filter by link" dropdown options from the current set of
+// links. Called every time the Users page is opened, so it always reflects
+// links created since the last visit.
+function populateUsersLinkFilter() {
+  const options = [`<button data-linkfilter="all">All Links</button>`]
+    .concat(
+      links
+        .slice()
+        .sort((a, b) => a.code.localeCompare(b.code))
+        .map(l => `<button data-linkfilter="${escapeHtml(l.code)}">${escapeHtml(l.code)}</button>`)
+    );
+  usersLinkFilterMenu.innerHTML = options.join("");
+
+  usersLinkFilterMenu.querySelectorAll("button[data-linkfilter]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.linkfilter === usersLinkFilterMode);
+    btn.addEventListener("click", () => {
+      usersLinkFilterMode = btn.dataset.linkfilter;
+      usersLinkFilterLabel.textContent = usersLinkFilterMode === "all" ? "All Links" : usersLinkFilterMode;
+      usersLinkFilterMenu.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      usersLinkFilterMenu.hidden = true;
+      usersLinkFilterBtn.setAttribute("aria-expanded", "false");
+      renderAllUsers();
+    });
+  });
+}
+
+// Central entry point for jumping to the Users page, optionally pre-filtered
+// to a single link's traffic. Used by: the dashboard's per-link "Details"
+// buttons, the dashboard's "View all N visitors" link, and the All Tracking
+// Links page's per-row eye button.
+function openUsersView(linkCode, highlight) {
+  usersLinkFilterMode = linkCode || "all";
+  usersLinkFilterLabel.textContent = linkCode || "All Links";
+  pendingVisitorHighlight = highlight || null;
+  switchView("users");
+}
+
 function switchView(view) {
-  const goingToAll = view === "all";
-  allLinksView.hidden = !goingToAll;
-  dashboardView.hidden = goingToAll;
-  if (goingToAll) {
+  currentView = view;
+  dashboardView.hidden = view !== "dashboard";
+  allLinksView.hidden = view !== "all";
+  allUsersView.hidden = view !== "users";
+
+  if (view === "all") {
     renderAllLinks();
+  } else if (view === "users") {
+    populateUsersLinkFilter();
     renderAllUsers();
+  }
+
+  if (view !== "dashboard") {
     window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
   }
 }
@@ -348,7 +414,7 @@ async function loadClicks() {
 
   clicksLog = data || [];
   renderAll();
-  if (!allLinksView.hidden) renderAllUsers();
+  if (currentView === "users") renderAllUsers();
 }
 
 function clicksForCode(code) {
@@ -446,7 +512,8 @@ function copyLinkToClipboard(code, silent = false) {
 function renderAll() {
   updateStats();
   renderTable();
-  if (!allLinksView.hidden) renderAllLinks();
+  if (currentView === "all") renderAllLinks();
+  if (currentView === "users") renderAllUsers();
 }
 
 function updateStats() {
@@ -500,7 +567,7 @@ function closeAllKebabMenus() {
 // Recent (top 5) list on the dashboard
 function renderTable() {
   footerCount.textContent = `${links.length} link${links.length === 1 ? '' : 's'} created`;
-  buildLinkList(tableBody, links.slice(0, 5));
+  buildLinkList(tableBody, links.slice(0, 5), { context: "dashboard" });
 }
 
 // Full searchable / sortable list
@@ -534,7 +601,7 @@ function renderAllLinks() {
   }
 
   filterPill.textContent = `All Links · ${links.length}`;
-  buildLinkList(allTableBody, list, { emptyLabel: searchTerm ? "No links match your search." : "No links created yet." });
+  buildLinkList(allTableBody, list, { emptyLabel: searchTerm ? "No links match your search." : "No links created yet.", context: "all" });
 }
 
 // Shared row builder used by both the dashboard preview list and the full list
@@ -550,7 +617,7 @@ function buildLinkList(container, list, opts = {}) {
   }
 
   list.forEach(link => {
-    container.appendChild(buildLinkItem(link));
+    container.appendChild(buildLinkItem(link, opts.context || "dashboard"));
   });
 }
 
@@ -566,7 +633,9 @@ const ICONS = {
   os: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="4" width="18" height="12" rx="1.6" stroke="currentColor" stroke-width="1.8"/><path d="M8 20h8M12 16v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   clock: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   user: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="8.5" r="3.5" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 20c1.4-3.6 4.5-5.5 7.5-5.5s6.1 1.9 7.5 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
-  chevron: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  chevron: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  eye: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/></svg>',
+  arrow: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 };
 
 function flagImg(countryCode, fallbackSeed) {
@@ -576,19 +645,29 @@ function flagImg(countryCode, fallbackSeed) {
 
 // Builds one visitor card (used inside an expanded link row and in the
 // "All User Listings" panel).
+function visitorKey(click) {
+  return `${click.visitor_id}__${click.created_at}`;
+}
+
 function buildVisitorCard(click, opts = {}) {
   const flag = flagImg(click.country_code, click.visitor_id);
   const place = [click.city, click.country].filter(Boolean).join(", ") || "Unknown location";
+  // navigate mode (dashboard preview): "Details" jumps to the Users page and
+  // opens this exact visit there, rather than expanding inline.
+  const toggleLabel = opts.navigate
+    ? `Details ${ICONS.arrow}`
+    : `Details ${ICONS.chevron}`;
+  const toggleClass = opts.navigate ? "visitor-details-toggle visitor-details-toggle--nav" : "visitor-details-toggle";
 
   return `
-    <div class="visitor-card">
+    <div class="visitor-card" data-visitor-key="${escapeHtml(visitorKey(click))}" data-link-code="${escapeHtml(click.link_code)}">
       <div class="visitor-card-top">
         <span class="visitor-flag" style="background-image:url('${flag}')" title="${escapeHtml(click.country || "Unknown")}"></span>
         <div class="visitor-place">
           <span class="visitor-place-main">${escapeHtml(place)}</span>
           ${opts.showCode ? `<span class="visitor-linkcode">via ${escapeHtml(click.link_code)}</span>` : ""}
         </div>
-        <button class="visitor-details-toggle" type="button">Details ${ICONS.chevron}</button>
+        <button class="${toggleClass}" type="button">${toggleLabel}</button>
       </div>
       <div class="visitor-detail-grid" hidden>
         <div class="vfield">${glassIcon("Country", "glow-teal", ICONS.country)}<div><label>Country</label><span>${escapeHtml(click.country || "Unknown")}</span></div></div>
@@ -603,6 +682,7 @@ function buildVisitorCard(click, opts = {}) {
   `;
 }
 
+// Used on the Users page, where "Details" expands the card in place.
 function wireVisitorCardToggles(root) {
   root.querySelectorAll(".visitor-details-toggle").forEach(btn => {
     btn.addEventListener("click", (e) => {
@@ -617,16 +697,37 @@ function wireVisitorCardToggles(root) {
   });
 }
 
+// Used on the dashboard's recent-visitors preview, where "Details" jumps to
+// the Users page (filtered to this link) and opens that exact visit there,
+// instead of expanding in place.
+function wireVisitorCardNavigation(root) {
+  root.querySelectorAll(".visitor-card").forEach(card => {
+    const btn = card.querySelector(".visitor-details-toggle--nav");
+    if (!btn) return;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const [visitorId, createdAt] = card.dataset.visitorKey.split("__");
+      openUsersView(card.dataset.linkCode, { linkCode: card.dataset.linkCode, visitorId, createdAt });
+    });
+  });
+}
+
 // A "link item" wraps the compact summary row plus its (optional, on-demand)
 // expanded visitor panel — this two-part structure is what keeps the layout
 // from ever overlapping at narrow viewport widths, since the detail content
 // only ever appears full-width, below the summary line.
-function buildLinkItem(link) {
+function buildLinkItem(link, context = "dashboard") {
   const wrap = document.createElement("div");
   wrap.className = "link-item";
 
-  const row = buildLinkRow(link);
+  const row = buildLinkRow(link, context);
   wrap.appendChild(row);
+
+  // The All Tracking Links page keeps rows compact (no inline expand) — use
+  // the eye icon on the row instead to jump straight to the Users page.
+  if (context === "all") {
+    return wrap;
+  }
 
   const recentClicks = clicksForCode(link.code).slice(0, 3);
   const detail = document.createElement("div");
@@ -638,18 +739,13 @@ function buildLinkItem(link) {
   } else {
     detail.innerHTML = `
       <div class="row-detail-head">Recent visitors</div>
-      <div class="visitor-cards">${recentClicks.map(c => buildVisitorCard(c)).join("")}</div>
+      <div class="visitor-cards">${recentClicks.map(c => buildVisitorCard(c, { navigate: true })).join("")}</div>
       ${clicksForCode(link.code).length > 3 ? `<button class="link-viewall" data-code="${escapeHtml(link.code)}">View all ${clicksForCode(link.code).length} visitors →</button>` : ""}
     `;
-    wireVisitorCardToggles(detail);
+    wireVisitorCardNavigation(detail);
     const viewAll = detail.querySelector(".link-viewall");
     if (viewAll) {
-      viewAll.addEventListener("click", () => {
-        userSearchTerm = link.code.toLowerCase();
-        usersSearchInput.value = link.code;
-        switchView("all");
-        document.getElementById("all-users-body").scrollIntoView({ behavior: "smooth", block: "start" });
-      });
+      viewAll.addEventListener("click", () => openUsersView(link.code));
     }
   }
 
@@ -657,7 +753,7 @@ function buildLinkItem(link) {
   return wrap;
 }
 
-function buildLinkRow(link) {
+function buildLinkRow(link, context = "dashboard") {
   const row = document.createElement("div");
   row.className = "link-row";
 
@@ -667,6 +763,14 @@ function buildLinkRow(link) {
   const latest = linkClicks[0];
   const flag = latest ? (latest.country_code || flagForCode(link.code)) : flagForCode(link.code);
   const isOpen = expandedRows.has(link.code);
+
+  // Dashboard rows keep the inline expand chevron (recent-visitors preview).
+  // The All Tracking Links page instead shows a hover-revealed eye icon that
+  // jumps straight to the Users page, filtered to this link — there's no
+  // inline expand panel on that page.
+  const actionBtnHtml = context === "all"
+    ? `<button class="row-eye-btn" aria-label="View visitors for this link" title="View visitors for ${escapeHtml(link.code)}">${ICONS.eye}</button>`
+    : `<button class="row-expand-btn ${isOpen ? "open" : ""}" aria-label="Show visitor details" title="Show visitor details">${ICONS.chevron}</button>`;
 
   row.innerHTML = `
     <div class="row-icon row-icon--flag" style="background-image:url('${flagImg(flag, link.code)}')" title="${escapeHtml(flag).toUpperCase()}"></div>
@@ -686,7 +790,7 @@ function buildLinkRow(link) {
       <span class="clicks-num">${clickCount.toLocaleString()}</span>
       <span class="clicks-label">CLICKS</span>
     </div>
-    <button class="row-expand-btn ${isOpen ? "open" : ""}" aria-label="Show visitor details" title="Show visitor details">${ICONS.chevron}</button>
+    ${actionBtnHtml}
     <div class="row-menu">
       <button class="kebab-btn" aria-label="More actions" title="More actions">&#8942;</button>
       <div class="kebab-menu" hidden>
@@ -700,16 +804,24 @@ function buildLinkRow(link) {
   const codeEl = row.querySelector(".row-code");
   codeEl.addEventListener("click", () => openLink(link.code));
 
-  const expandBtn = row.querySelector(".row-expand-btn");
-  expandBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const wrap = row.parentElement;
-    const detail = wrap.querySelector(".row-detail");
-    const willOpen = detail.hidden;
-    detail.hidden = !willOpen;
-    expandBtn.classList.toggle("open", willOpen);
-    if (willOpen) expandedRows.add(link.code); else expandedRows.delete(link.code);
-  });
+  if (context === "all") {
+    const eyeBtn = row.querySelector(".row-eye-btn");
+    eyeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openUsersView(link.code);
+    });
+  } else {
+    const expandBtn = row.querySelector(".row-expand-btn");
+    expandBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const wrap = row.parentElement;
+      const detail = wrap.querySelector(".row-detail");
+      const willOpen = detail.hidden;
+      detail.hidden = !willOpen;
+      expandBtn.classList.toggle("open", willOpen);
+      if (willOpen) expandedRows.add(link.code); else expandedRows.delete(link.code);
+    });
+  }
 
   const kebabBtn = row.querySelector(".kebab-btn");
   const kebabMenu = row.querySelector(".kebab-menu");
@@ -750,6 +862,10 @@ function escapeHtml(str) {
 function renderAllUsers() {
   let list = clicksLog.slice();
 
+  if (usersLinkFilterMode !== "all") {
+    list = list.filter(c => c.link_code === usersLinkFilterMode);
+  }
+
   if (userSearchTerm) {
     list = list.filter(c =>
       (c.visitor_id || "").toLowerCase().includes(userSearchTerm) ||
@@ -772,16 +888,41 @@ function renderAllUsers() {
       break;
   }
 
-  usersFilterPill.textContent = `All Users · ${clicksLog.length}`;
+  const scopeLabel = usersLinkFilterMode === "all" ? "All Users" : `Users · ${usersLinkFilterMode}`;
+  const scopeTotal = usersLinkFilterMode === "all" ? clicksLog.length : clicksForCode(usersLinkFilterMode).length;
+  usersFilterPill.textContent = `${scopeLabel} · ${scopeTotal}`;
   allUsersBody.innerHTML = "";
 
   if (list.length === 0) {
-    allUsersBody.innerHTML = `<div class="empty-state"><span class="icon">&#128100;</span><span>${userSearchTerm ? "No visitors match your search." : "No visitor activity recorded yet. Once someone opens one of your links, they'll show up here."}</span></div>`;
+    const emptyMsg = userSearchTerm
+      ? "No visitors match your search."
+      : usersLinkFilterMode !== "all"
+        ? "No visitor activity recorded yet for this link."
+        : "No visitor activity recorded yet. Once someone opens one of your links, they'll show up here.";
+    allUsersBody.innerHTML = `<div class="empty-state"><span class="icon">&#128100;</span><span>${emptyMsg}</span></div>`;
     return;
   }
 
-  allUsersBody.innerHTML = list.map(c => buildVisitorCard(c, { showCode: true })).join("");
+  allUsersBody.innerHTML = list.map(c => buildVisitorCard(c, { showCode: usersLinkFilterMode === "all" })).join("");
   wireVisitorCardToggles(allUsersBody);
+
+  // If we arrived here via a dashboard "Details" click on one specific
+  // visit, open that exact card and scroll it into view.
+  if (pendingVisitorHighlight) {
+    const key = `${pendingVisitorHighlight.visitorId}__${pendingVisitorHighlight.createdAt}`;
+    const target = allUsersBody.querySelector(`.visitor-card[data-visitor-key="${CSS.escape(key)}"]`);
+    if (target) {
+      const grid = target.querySelector(".visitor-detail-grid");
+      const btn = target.querySelector(".visitor-details-toggle");
+      grid.hidden = false;
+      target.classList.add("open");
+      if (btn) btn.classList.add("open");
+      target.classList.add("visitor-card--flash");
+      setTimeout(() => target.classList.remove("visitor-card--flash"), 1800);
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    pendingVisitorHighlight = null;
+  }
 }
 
 // ==========================================

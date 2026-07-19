@@ -66,12 +66,6 @@ export default async function handler(req, res) {
       return res.status(404).send("Tracking link not found");
     }
 
-    // Update click count
-    await supabase
-      .from("links")
-      .update({ clicks: data.clicks + 1 })
-      .eq("code", id.toLowerCase());
-
     // ---- Visitor fingerprint (cookie-based, persists across visits) ----
     let visitorId = getCookie(req, "ltv_id");
     if (!visitorId) {
@@ -93,10 +87,19 @@ export default async function handler(req, res) {
       ? decodeURIComponent(req.headers["x-vercel-ip-city"])
       : null;
 
-    // Fire-and-forget: don't block the redirect if analytics insert is slow/fails
-    supabase
-      .from("clicks")
-      .insert([
+    // IMPORTANT: both writes are awaited (in parallel) BEFORE the redirect
+    // is sent. On Vercel, a serverless function's execution is frozen the
+    // instant the response is sent — any un-awaited ("fire-and-forget")
+    // promise started after that point is not guaranteed to finish, which
+    // is why the "clicks" table was staying empty. Using Promise.all here
+    // keeps things fast (both requests run concurrently) while guaranteeing
+    // the insert actually completes.
+    const [, { error: clickErr }] = await Promise.all([
+      supabase
+        .from("links")
+        .update({ clicks: data.clicks + 1 })
+        .eq("code", id.toLowerCase()),
+      supabase.from("clicks").insert([
         {
           link_code: id.toLowerCase(),
           visitor_id: visitorId,
@@ -108,9 +111,9 @@ export default async function handler(req, res) {
           os
         }
       ])
-      .then(({ error: clickErr }) => {
-        if (clickErr) console.error("Visitor log insert failed:", clickErr);
-      });
+    ]);
+
+    if (clickErr) console.error("Visitor log insert failed:", clickErr);
 
     let destination = data.original.trim();
     if (!/^https?:\/\//i.test(destination)) {

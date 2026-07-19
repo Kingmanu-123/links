@@ -1297,6 +1297,56 @@ body.theme-aurora .brand-icon {
   color: var(--teal-bright);
 }
 
+/* ---- Eye button (All Tracking Links page only) ----
+   Hidden until the row is hovered, then fades in and lights up teal —
+   the same accent language as the Create button's hover state. Clicking
+   jumps straight to the Users page filtered to this link. */
+
+.row-eye-btn {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--panel-border);
+  background: rgba(148, 158, 214, 0.06);
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.85);
+  pointer-events: none;
+  transition: opacity var(--transition-fast), transform var(--transition-fast), background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.row-eye-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.link-row:hover .row-eye-btn {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+.row-eye-btn:hover {
+  background: rgba(45, 212, 191, 0.18);
+  color: var(--teal-bright);
+  box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.14), 0 6px 16px rgba(45, 212, 191, 0.25);
+}
+
+/* Touch devices have no hover state — keep the eye button visible so it's
+   always reachable on mobile. */
+@media (hover: none) {
+  .row-eye-btn {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+
 /* ---- Link item wrapper (summary row + expandable visitor panel) ---- */
 
 .link-item {
@@ -1448,6 +1498,35 @@ body.theme-aurora .brand-icon {
 
 .visitor-details-toggle.open svg {
   transform: rotate(180deg);
+}
+
+/* Navigate-mode variant (dashboard preview): the arrow icon signals "go to
+   full details" rather than "expand here", so it never rotates. */
+.visitor-details-toggle--nav {
+  background: rgba(139, 123, 246, 0.12);
+  border-color: rgba(139, 123, 246, 0.3);
+  color: var(--purple-bright);
+}
+
+.visitor-details-toggle--nav:hover {
+  background: rgba(139, 123, 246, 0.22);
+  color: var(--purple-bright);
+}
+
+.visitor-details-toggle--nav svg {
+  transform: none !important;
+}
+
+/* Brief highlight when landing on a specific visit after a dashboard
+   "Details" navigation, so it's obvious which card you were sent to. */
+.visitor-card--flash {
+  animation: visitor-flash 1.8s ease;
+}
+
+@keyframes visitor-flash {
+  0%   { box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.5); }
+  60%  { box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.5); }
+  100% { box-shadow: 0 0 0 0 rgba(45, 212, 191, 0); }
 }
 
 .visitor-detail-grid {
@@ -1771,6 +1850,13 @@ body.theme-aurora .brand-icon {
   border-radius: var(--radius-pill);
 }
 
+.controls-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
 .sort-wrap {
   position: relative;
 }
@@ -1954,7 +2040,8 @@ body.theme-aurora .brand-icon {
     margin-left: calc(38px + 0.9rem);
   }
 
-  .row-expand-btn {
+  .row-expand-btn,
+  .row-eye-btn {
     order: 2;
     margin-left: auto;
   }
@@ -1997,6 +2084,12 @@ body.theme-aurora .brand-icon {
     align-items: stretch;
   }
 
+  .controls-actions {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
   .sort-wrap {
     width: 100%;
   }
@@ -2009,6 +2102,22 @@ body.theme-aurora .brand-icon {
   .sort-menu {
     left: 0;
     right: 0;
+  }
+
+  .all-links-top {
+    gap: 0.6rem;
+  }
+
+  .all-links-top .btn-back {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .all-links-top .brand--sm {
+    flex-basis: 100%;
+    justify-content: center;
+    order: 3;
+    margin-top: 0.2rem;
   }
 }
 

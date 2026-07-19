@@ -1,1483 +1,552 @@
-/* ==========================================================================
-   LINK TRACKER — Cosmic Dashboard Redesign
-   Design tokens, glass panels, starfield backdrop
-   ========================================================================== */
+// ==========================================
+// 1. INITIALIZATION & DATABASE CONFIG
+// ==========================================
+const SUPABASE_URL = "https://jctdtavzpcxnvpebpyqx.supabase.co";
+const SUPABASE_KEY = "sb_publishable_QUrKq5DUY3pwmHv4HEjKCQ_bGFZi4VQ";
+const BASE_URL = "https://links-one-rho.vercel.app";
 
-:root {
-  /* ---- Palette ---- */
-  --bg-deep:        #0a0d1c;
-  --bg-deep-alt:     #0d1128;
-  --panel:          rgba(22, 26, 51, 0.62);
-  --panel-solid:    #171b32;
-  --panel-border:   rgba(148, 158, 214, 0.16);
-  --panel-border-soft: rgba(148, 158, 214, 0.09);
-  --input-bg:       rgba(10, 13, 28, 0.55);
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  --teal:           #2dd4bf;
-  --teal-bright:    #5eead4;
-  --teal-dark:      #0f9c8c;
-  --purple:         #8b7bf6;
-  --purple-bright:  #a78bfa;
-  --green:          #34d399;
-  --amber:          #fbbf24;
-  --red:            #f87171;
+// Global state
+let links = [];
+let sortMode = "newest";     // newest | oldest | most | least | az
+let searchTerm = "";
 
-  --text-1:         #eef0fb;
-  --text-2:         #a8adc9;
-  --text-3:         #6d7292;
+// DOM Elements — dashboard
+const urlInput = document.getElementById("url-input");
+const aliasInput = document.getElementById("alias-input");
+const urlError = document.getElementById("url-error");
+const aliasError = document.getElementById("alias-error");
+const createBtn = document.getElementById("create-btn");
+const createBtnLabel = document.getElementById("create-btn-label");
+const previewPlaceholder = document.getElementById("preview-placeholder");
+const previewCreated = document.getElementById("preview-created");
+const tableBody = document.getElementById("table-body");
+const footerCount = document.getElementById("footer-count");
+const toast = document.getElementById("toast");
+const statActive = document.getElementById("stat-active");
+const statClicks = document.getElementById("stat-clicks");
+const headerSearchInput = document.getElementById("header-search-input");
+const headerSearchGo = document.getElementById("header-search-go");
 
-  /* ---- Type ---- */
-  --font-display: 'Space Grotesk', 'Segoe UI', sans-serif;
-  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+// Decorative country flags shown (randomly, but consistently per link) on row icons
+const FLAG_CODES = ["us", "gb", "de", "fr", "in", "jp", "br", "ca", "au", "nl", "se", "mx", "kr", "it", "es", "sg"];
 
-  /* ---- Misc ---- */
-  --radius-sm: 8px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
-  --radius-pill: 999px;
-  --transition-fast: 0.15s ease;
-  --transition-med: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+function flagForCode(code) {
+  let hash = 0;
+  const str = String(code || "");
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  }
+  return FLAG_CODES[hash % FLAG_CODES.length];
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+// DOM Elements — view switching
+const dashboardView = document.getElementById("dashboard-view");
+const allLinksView = document.getElementById("all-links-view");
+const viewAllBtn = document.getElementById("view-all-btn");
+const backBtn = document.getElementById("back-btn");
 
-/*
- * IMPORTANT: several components below (.page, .preview-created,
- * .preview-placeholder, .kebab-menu, .sort-menu) declare their own
- * `display: flex`. Because an author stylesheet always wins over the
- * browser's built-in `[hidden] { display: none }` rule at equal
- * specificity, those components would otherwise stay visually
- * visible even after JS sets `element.hidden = true`. This single
- * rule restores native hidden-attribute behavior everywhere.
- */
-[hidden] {
-  display: none !important;
-}
+// DOM Elements — all links view
+const allTableBody = document.getElementById("all-table-body");
+const searchInput = document.getElementById("search-input");
+const filterPill = document.getElementById("filter-pill");
+const sortBtn = document.getElementById("sort-btn");
+const sortLabel = document.getElementById("sort-label");
+const sortMenu = document.getElementById("sort-menu");
 
-html {
-  color-scheme: dark;
-}
+const SORT_LABELS = {
+  newest: "Newest First",
+  oldest: "Oldest First",
+  most: "Most Clicks",
+  least: "Least Clicks",
+  az: "A → Z"
+};
 
-html, body {
-  max-width: 100%;
-  overflow-x: hidden;
-}
+// ==========================================
+// 2. LIFECYCLE ROUTING & APP STARTUP
+// ==========================================
+document.addEventListener("DOMContentLoaded", () => {
+  loadLinks();
+  createBtn.addEventListener("click", handleCreateLink);
+  viewAllBtn.addEventListener("click", () => switchView("all"));
+  backBtn.addEventListener("click", () => switchView("dashboard"));
 
-body {
-  font-family: var(--font-body);
-  background: var(--bg-deep);
-  color: var(--text-1);
-  min-height: 100vh;
-  position: relative;
-}
+  searchInput.addEventListener("input", (e) => {
+    searchTerm = e.target.value.trim().toLowerCase();
+    renderAllLinks();
+  });
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
+  const runHeaderSearch = () => {
+    const term = headerSearchInput.value.trim();
+    searchTerm = term.toLowerCase();
+    searchInput.value = term;
+    switchView("all");
+  };
+  headerSearchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") runHeaderSearch();
+  });
+  headerSearchGo.addEventListener("click", runHeaderSearch);
+
+  sortBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    sortMenu.hidden = !sortMenu.hidden;
+    sortBtn.setAttribute("aria-expanded", String(!sortMenu.hidden));
+  });
+
+  sortMenu.querySelectorAll("button[data-sort]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      sortMode = btn.dataset.sort;
+      sortLabel.textContent = SORT_LABELS[sortMode];
+      sortMenu.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      sortMenu.hidden = true;
+      sortBtn.setAttribute("aria-expanded", "false");
+      renderAllLinks();
+    });
+  });
+
+  // Close any open dropdown (sort menu or row kebab menus) on outside click
+  document.addEventListener("click", () => {
+    sortMenu.hidden = true;
+    sortBtn.setAttribute("aria-expanded", "false");
+    closeAllKebabMenus();
+  });
+});
+
+function switchView(view) {
+  const goingToAll = view === "all";
+  allLinksView.hidden = !goingToAll;
+  dashboardView.hidden = goingToAll;
+  if (goingToAll) {
+    renderAllLinks();
+    window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
   }
 }
 
-a:focus-visible,
-button:focus-visible,
-input:focus-visible {
-  outline: 2px solid var(--teal);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
-}
-
-/* ==========================================================================
-   Cosmic backdrop: nebula glows + starfield
-   ========================================================================== */
-
-.cosmos {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  background: var(--bg-deep);
-}
-
-.glow {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(90px);
-  opacity: 0.55;
-}
-
-.glow--a {
-  width: 620px;
-  height: 620px;
-  top: -220px;
-  left: -160px;
-  background: radial-gradient(circle, rgba(139, 123, 246, 0.55), transparent 70%);
-  animation: drift-a 22s ease-in-out infinite alternate;
-}
-
-.glow--b {
-  width: 560px;
-  height: 560px;
-  bottom: -260px;
-  right: -180px;
-  background: radial-gradient(circle, rgba(45, 212, 191, 0.35), transparent 70%);
-  animation: drift-b 26s ease-in-out infinite alternate;
-}
-
-@keyframes drift-a {
-  to { transform: translate(60px, 40px); }
-}
-
-@keyframes drift-b {
-  to { transform: translate(-50px, -30px); }
-}
-
-.stars {
-  position: absolute;
-  inset: 0;
-  background-image:
-    radial-gradient(1.5px 1.5px at 10% 20%, rgba(255,255,255,0.5), transparent),
-    radial-gradient(1.5px 1.5px at 80% 10%, rgba(255,255,255,0.4), transparent),
-    radial-gradient(1px 1px at 60% 70%, rgba(255,255,255,0.35), transparent),
-    radial-gradient(1.5px 1.5px at 30% 85%, rgba(255,255,255,0.4), transparent),
-    radial-gradient(1px 1px at 90% 60%, rgba(255,255,255,0.3), transparent),
-    radial-gradient(1.5px 1.5px at 45% 40%, rgba(255,255,255,0.35), transparent),
-    radial-gradient(1px 1px at 20% 55%, rgba(255,255,255,0.3), transparent);
-  background-repeat: repeat;
-  background-size: 340px 340px;
-  opacity: 0.8;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .glow--a, .glow--b { animation: none; }
-}
-
-/* ---- Snowy mountain range, fixed to the bottom of the backdrop ---- */
-
-.mountains {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -2px;
-  width: 100%;
-  height: 34vh;
-  min-height: 180px;
-  background-repeat: no-repeat;
-  background-position: bottom center;
-  background-size: cover;
-  opacity: 0.9;
-}
-
-.mountains--back {
-  height: 40vh;
-  min-height: 220px;
-  opacity: 0.35;
-  background-image:
-    linear-gradient(160deg, rgba(148, 158, 214, 0.16), rgba(148, 158, 214, 0.03)),
-    conic-gradient(from 0deg at 10% 100%, transparent 0deg);
-  clip-path: polygon(0% 100%, 0% 55%, 8% 40%, 16% 62%, 24% 30%, 33% 58%, 42% 25%, 52% 60%, 61% 38%, 70% 66%, 79% 22%, 88% 52%, 96% 34%, 100% 58%, 100% 100%);
-  background-color: rgba(148, 158, 214, 0.1);
-}
-
-.mountains--front {
-  height: 26vh;
-  min-height: 130px;
-  opacity: 0.6;
-  clip-path: polygon(0% 100%, 0% 70%, 6% 48%, 14% 68%, 22% 42%, 30% 66%, 40% 36%, 50% 70%, 58% 46%, 68% 72%, 76% 40%, 86% 64%, 94% 44%, 100% 68%, 100% 100%);
-  background: linear-gradient(180deg, #dfe4f7 0%, #b9c0e0 55%, #8890b8 100%);
-}
-
-/* ---- Falling snow ---- */
-
-.snowfall {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.snow-layer {
-  position: absolute;
-  inset: -10% 0 0 0;
-  background-repeat: repeat;
-  opacity: 0.55;
-}
-
-.snow-layer--1 {
-  background-image:
-    radial-gradient(2px 2px at 12% 10%, #fff, transparent),
-    radial-gradient(1.5px 1.5px at 44% 30%, #fff, transparent),
-    radial-gradient(2px 2px at 68% 15%, #fff, transparent),
-    radial-gradient(1.5px 1.5px at 85% 40%, #fff, transparent),
-    radial-gradient(2px 2px at 25% 55%, #fff, transparent);
-  background-size: 320px 320px;
-  animation: snow-fall 14s linear infinite;
-  opacity: 0.5;
-}
-
-.snow-layer--2 {
-  background-image:
-    radial-gradient(1.5px 1.5px at 20% 20%, #fff, transparent),
-    radial-gradient(1px 1px at 55% 45%, #fff, transparent),
-    radial-gradient(1.5px 1.5px at 78% 25%, #fff, transparent),
-    radial-gradient(1px 1px at 92% 60%, #fff, transparent),
-    radial-gradient(1.5px 1.5px at 35% 75%, #fff, transparent);
-  background-size: 260px 260px;
-  animation: snow-fall 10s linear infinite;
-  opacity: 0.4;
-}
-
-.snow-layer--3 {
-  background-image:
-    radial-gradient(2.5px 2.5px at 8% 35%, #fff, transparent),
-    radial-gradient(2px 2px at 48% 12%, #fff, transparent),
-    radial-gradient(2.5px 2.5px at 72% 50%, #fff, transparent),
-    radial-gradient(2px 2px at 90% 20%, #fff, transparent);
-  background-size: 400px 400px;
-  animation: snow-fall 20s linear infinite;
-  opacity: 0.3;
-}
-
-@keyframes snow-fall {
-  from { transform: translateY(-15%); }
-  to { transform: translateY(115%); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .snow-layer { animation: none; }
-}
-
-/* ==========================================================================
-   Page shell
-   ========================================================================== */
-
-.page {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  justify-content: center;
-  padding: 2.5rem 1.25rem 4rem;
-  min-height: 100vh;
-  overflow-x: hidden;
-}
-
-.shell {
-  width: 100%;
-  max-width: 1080px;
-  display: flex;
-  flex-direction: column;
-  gap: 1.75rem;
-  min-width: 0;
-}
-
-.shell--narrow {
-  max-width: 760px;
-}
-
-/* Glassmorphism panel base */
-.panel {
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-lg);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
-}
-
-/* ==========================================================================
-   Header
-   ========================================================================== */
-
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 1.25rem;
-}
-
-.header-search {
-  flex: 1 1 240px;
-  max-width: 360px;
-  order: 2;
-}
-
-.stat-pills {
-  order: 3;
-}
-
-@media (max-width: 760px) {
-  .header-search {
-    order: 3;
-    max-width: none;
-    flex-basis: 100%;
+// ==========================================
+// 3. URL NORMALIZATION & CODE GENERATION
+// ==========================================
+function normalizeUrl(raw) {
+  let url = raw.trim();
+  if (!/^https?:\/\//i.test(url)) {
+    url = "https://" + url;
   }
-  .stat-pills {
-    order: 2;
+  try {
+    return new URL(url).href;
+  } catch {
+    return null;
   }
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 0.9rem;
+function randomCode(length = 6) {
+  const chars = "abcdefghijkmnpqrstuvwxy23456789";
+  let code = "";
+  for (let i = 0; i < length; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
 }
 
-.brand-icon {
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #0a0d1c;
-  background: radial-gradient(circle at 50% 45%, var(--teal-bright) 0%, var(--teal) 45%, var(--purple) 100%);
-  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.25), 0 8px 24px rgba(45, 212, 191, 0.45), 0 0 26px rgba(94, 234, 212, 0.35);
-  flex-shrink: 0;
-}
+// ==========================================
+// 4. CORE ACTION HANDLERS
+// ==========================================
+async function handleCreateLink() {
+  urlError.hidden = true;
+  aliasError.hidden = true;
 
-.brand-icon svg {
-  width: 22px;
-  height: 22px;
-}
+  const originalUrl = normalizeUrl(urlInput.value);
+  let alias = aliasInput.value.trim().toLowerCase();
 
-.brand-icon--sm {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-}
+  if (!originalUrl) {
+    urlError.hidden = false;
+    return;
+  }
 
-.brand-icon--sm svg {
-  width: 17px;
-  height: 17px;
-}
+  createBtn.disabled = true;
+  createBtnLabel.textContent = "Checking codes...";
 
-.brand-text h1 {
-  font-family: var(--font-display);
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--text-1);
-  line-height: 1.15;
-}
+  if (!alias) {
+    do {
+      alias = randomCode();
+    } while (await checkCodeExists(alias));
+  } else {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9-_]*[a-zA-Z0-9]$/.test(alias) && !/^[a-zA-Z0-9]$/.test(alias)) {
+      aliasError.textContent = "Invalid format. Must begin/end with a letter or number.";
+      aliasError.hidden = false;
+      resetCreateBtn();
+      return;
+    }
 
-.brand-text h1 .accent,
-.brand--sm h2 .accent {
-  background: linear-gradient(120deg, var(--teal-bright), var(--teal));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
+    const standsAlone = await checkCodeExists(alias);
+    if (standsAlone) {
+      aliasError.textContent = "Conflict: Custom short code already in use.";
+      aliasError.hidden = false;
+      resetCreateBtn();
+      return;
+    }
+  }
 
-.brand-text p {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--teal);
-}
+  const payload = {
+    original: originalUrl,
+    code: alias,
+    clicks: 0
+  };
 
-.brand--sm h2 {
-  font-family: var(--font-display);
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: var(--text-1);
-}
+  try {
+    const newRecord = await saveLink(payload);
 
-.stat-pills {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
+    if (newRecord) {
+      links.unshift(newRecord);
+      renderAll();
+      displayReceipt(newRecord);
 
-.stat-pill {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.55rem 1rem;
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-pill);
-  backdrop-filter: blur(14px);
-}
-
-.stat-pill-icon {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.stat-pill-icon svg {
-  width: 14px;
-  height: 14px;
-}
-
-.stat-pill-icon--teal {
-  background: rgba(45, 212, 191, 0.16);
-  color: var(--teal-bright);
-}
-
-.stat-pill-icon--purple {
-  background: rgba(139, 123, 246, 0.18);
-  color: var(--purple-bright);
-}
-
-.stat-pill-value {
-  font-family: var(--font-display);
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: var(--text-1);
-}
-
-.stat-pill-label {
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-/* ==========================================================================
-   Workspace split
-   ========================================================================== */
-
-.workspace {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1.25rem;
-  align-items: stretch;
-}
-
-@media (min-width: 800px) {
-  .workspace {
-    grid-template-columns: 1fr 1fr;
+      urlInput.value = "";
+      aliasInput.value = "";
+    } else {
+      showToast("Database synchronization error.");
+    }
+  } catch (err) {
+    console.error("Link persistence failed:", err);
+    showToast("Connection failed.");
+  } finally {
+    resetCreateBtn();
   }
 }
 
-.create-panel,
-.preview-panel {
-  padding: 1.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.35rem;
-}
-
-.create-panel h2,
-.history-head h2,
-.all-links-title {
-  font-family: var(--font-display);
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: var(--text-1);
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-.icon-badge {
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, var(--purple), var(--teal));
-  color: #fff;
-  flex-shrink: 0;
-}
-
-.icon-badge svg {
-  width: 14px;
-  height: 14px;
-}
-
-/* Fields */
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.field label {
-  font-size: 0.76rem;
-  font-weight: 600;
-  color: var(--text-2);
-}
-
-.input-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.input-icon {
-  position: absolute;
-  left: 0.9rem;
-  color: var(--text-3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.input-icon svg {
-  width: 16px;
-  height: 16px;
-}
-
-.input-icon--hash {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 0.95rem;
-}
-
-.input-wrap input {
-  width: 100%;
-  padding: 0.85rem 0.95rem 0.85rem 2.6rem;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-sm);
-  font-size: 0.92rem;
-  font-family: var(--font-body);
-  background-color: var(--input-bg);
-  color: var(--text-1);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-}
-
-.input-wrap input::placeholder {
-  color: var(--text-3);
-}
-
-.input-wrap input:focus {
-  outline: none;
-  border-color: var(--teal);
-  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.16);
-}
-
-.field-error {
-  font-size: 0.78rem;
-  color: var(--red);
-  font-weight: 500;
-}
-
-/* Create CTA button */
-
-.btn-cta {
-  background: linear-gradient(135deg, var(--teal-bright), var(--teal-dark));
-  background-size: 200% 200%;
-  background-position: 0% 50%;
-  color: #08221f;
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: 0.95rem 1.25rem;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 0.98rem;
-  cursor: pointer;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 0.5rem;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast), background var(--transition-med), background-position var(--transition-med);
-  box-shadow: 0 10px 26px rgba(45, 212, 191, 0.25);
-}
-
-.btn-cta svg {
-  width: 17px;
-  height: 17px;
-}
-
-.btn-cta:hover:not(:disabled) {
-  background-image: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
-  background-position: 100% 50%;
-  color: #0a0d1c;
-  transform: translateY(-1px);
-  box-shadow: 0 14px 32px rgba(167, 139, 250, 0.4);
-}
-
-.btn-cta:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.btn-cta:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* ==========================================================================
-   Preview / receipt panel
-   ========================================================================== */
-
-.preview-panel {
-  justify-content: center;
-}
-
-.preview-placeholder {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.9rem;
-  min-height: 240px;
-  color: var(--text-3);
-  text-align: center;
-  padding: 1.5rem;
-}
-
-.ph-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(148, 158, 214, 0.08);
-  color: var(--text-3);
-}
-
-.ph-icon svg {
-  width: 24px;
-  height: 24px;
-}
-
-.preview-placeholder p {
-  font-size: 0.85rem;
-  max-width: 22ch;
-}
-
-.preview-created {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 0.35rem;
-}
-
-.preview-check {
-  width: 54px;
-  height: 54px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(52, 211, 153, 0.14);
-  color: var(--green);
-  margin-bottom: 0.4rem;
-}
-
-.preview-check svg {
-  width: 26px;
-  height: 26px;
-}
-
-.preview-created h3 {
-  font-family: var(--font-display);
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: var(--text-1);
-}
-
-.preview-sub {
-  font-size: 0.82rem;
-  color: var(--text-3);
-  margin-bottom: 0.85rem;
-}
-
-.preview-url-box {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-  background: rgba(45, 212, 191, 0.1);
-  border: 1px solid rgba(45, 212, 191, 0.3);
-  border-radius: var(--radius-sm);
-  padding: 0.75rem 0.9rem;
-  margin-bottom: 1.1rem;
-}
-
-.preview-url-box span {
-  font-family: var(--font-mono);
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--teal-bright);
-  word-break: break-all;
-  text-align: left;
-}
-
-.preview-url-box button {
-  flex-shrink: 0;
-  background: transparent;
-  border: none;
-  color: var(--teal-bright);
-  cursor: pointer;
-  display: flex;
-  padding: 0.2rem;
-  transition: transform var(--transition-fast);
-}
-
-.preview-url-box button:hover {
-  transform: scale(1.1);
-}
-
-.preview-url-box button svg {
-  width: 16px;
-  height: 16px;
-}
-
-.preview-grid {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.9rem 1rem;
-  text-align: left;
-  margin-bottom: 1.3rem;
-}
-
-.preview-grid > div {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-.preview-grid label {
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.preview-grid span {
-  font-size: 0.86rem;
-  color: var(--text-1);
-  font-weight: 500;
-}
-
-.badge-active {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  width: max-content;
-  font-size: 0.74rem;
-  font-weight: 700;
-  color: var(--green);
-  background: rgba(52, 211, 153, 0.14);
-  padding: 0.2rem 0.55rem;
-  border-radius: var(--radius-pill);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.badge-active i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--green);
-  display: inline-block;
-}
-
-.preview-actions {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-}
-
-.btn-outline,
-.btn-solid {
-  padding: 0.75rem;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 0.86rem;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  text-align: center;
-  transition: transform var(--transition-fast), background var(--transition-fast);
-}
-
-.btn-outline {
-  background: transparent;
-  color: var(--text-1);
-  border: 1px solid var(--panel-border);
-}
-
-.btn-outline:hover {
-  background: rgba(148, 158, 214, 0.08);
-  transform: translateY(-1px);
-}
-
-.btn-solid {
-  background: linear-gradient(135deg, var(--teal-bright), var(--teal-dark));
-  color: #08221f;
-  border: none;
-}
-
-.btn-solid:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 24px rgba(45, 212, 191, 0.28);
-}
-
-/* ==========================================================================
-   Tracking history
-   ========================================================================== */
-
-.history-panel {
-  display: flex;
-  flex-direction: column;
-}
-
-.history-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  padding: 1.4rem 1.75rem;
-  border-bottom: 1px solid var(--panel-border-soft);
-}
-
-.btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  background: rgba(148, 158, 214, 0.08);
-  border: 1px solid var(--panel-border);
-  color: var(--text-1);
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.5rem 0.9rem;
-  border-radius: var(--radius-pill);
-  cursor: pointer;
-  transition: background var(--transition-fast), transform var(--transition-fast);
-}
-
-.btn-ghost svg {
-  width: 15px;
-  height: 15px;
-}
-
-.btn-ghost:hover {
-  background: rgba(148, 158, 214, 0.16);
-  transform: translateY(-1px);
-}
-
-.link-list {
-  display: flex;
-  flex-direction: column;
-  max-height: 460px;
-  overflow-y: auto;
-}
-
-.link-list--full {
-  max-height: none;
-}
-
-.link-list::-webkit-scrollbar {
-  width: 8px;
-}
-
-.link-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.link-list::-webkit-scrollbar-thumb {
-  background: var(--panel-border);
-  border-radius: 4px;
-}
-
-/* Row */
-
-.link-row {
-  display: flex;
-  align-items: center;
-  gap: 0.9rem;
-  padding: 1rem 1.75rem;
-  border-bottom: 1px solid var(--panel-border-soft);
-  transition: background var(--transition-fast);
-  position: relative;
-}
-
-.link-row:last-child {
-  border-bottom: none;
-}
-
-.link-row:hover {
-  background: rgba(148, 158, 214, 0.05);
-}
-
-.row-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.row-code {
-  font-family: var(--font-display);
-  font-weight: 700;
-  color: var(--teal-bright);
-  cursor: pointer;
-  font-size: 0.98rem;
-  width: max-content;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.row-code:hover {
-  text-decoration: underline;
-}
-
-.row-url {
-  font-size: 0.8rem;
-  color: var(--text-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.row-meta {
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  flex-wrap: wrap;
-  margin-top: 0.1rem;
-}
-
-.row-date {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.74rem;
-  color: var(--text-3);
-}
-
-.row-date svg {
-  width: 12px;
-  height: 12px;
-}
-
-.row-clicks {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  flex-shrink: 0;
-  min-width: 64px;
-  text-align: right;
-}
-
-/* 1-2 digit counts center-align; 3+ digit counts stay right-aligned (default above) */
-.row-clicks.clicks-center {
-  align-items: center;
-  text-align: center;
-}
-
-.clicks-num {
-  font-family: var(--font-display);
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: var(--amber);
-  line-height: 1.2;
-}
-
-.clicks-label {
-  font-size: 0.62rem;
-  font-weight: 600;
-  color: var(--text-3);
-  letter-spacing: 0.06em;
-}
-
-.row-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, rgba(139, 123, 246, 0.35), rgba(45, 212, 191, 0.25));
-  color: var(--teal-bright);
-  overflow: hidden;
-}
-
-.row-icon svg {
-  width: 17px;
-  height: 17px;
-}
-
-.row-icon.row-icon--flag {
-  border: 2px solid rgba(255, 255, 255, 0.85);
-  background-color: #fff;
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 180%;
-}
-
-.row-menu {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.kebab-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-3);
-  font-size: 1.3rem;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0.35rem 0.5rem;
-  border-radius: var(--radius-sm);
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-.kebab-btn:hover {
-  background: rgba(148, 158, 214, 0.1);
-  color: var(--text-1);
-}
-
-.kebab-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
-  background: var(--panel-solid);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
-  display: flex;
-  flex-direction: column;
-  min-width: 140px;
-  overflow: hidden;
-  z-index: 20;
-}
-
-.kebab-menu button {
-  background: transparent;
-  border: none;
-  text-align: left;
-  padding: 0.6rem 0.85rem;
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: var(--text-1);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.kebab-menu button:hover {
-  background: rgba(148, 158, 214, 0.1);
-}
-
-.kebab-menu button[data-action="delete"] {
-  color: var(--red);
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 3.5rem 2rem;
-  color: var(--text-3);
-  gap: 0.6rem;
-  text-align: center;
-}
-
-.empty-state .icon {
-  font-size: 1.8rem;
-  opacity: 0.7;
-}
-
-.history-foot {
-  padding: 0.9rem 1.75rem;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--text-3);
-  border-top: 1px solid var(--panel-border-soft);
-}
-
-/* ==========================================================================
-   All Links view
-   ========================================================================== */
-
-.all-links-top {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.btn-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  color: var(--text-1);
-  font-size: 0.84rem;
-  font-weight: 600;
-  padding: 0.55rem 0.95rem;
-  border-radius: var(--radius-pill);
-  cursor: pointer;
-  transition: background var(--transition-fast), transform var(--transition-fast);
-  backdrop-filter: blur(14px);
-}
-
-.btn-back svg {
-  width: 15px;
-  height: 15px;
-}
-
-.btn-back:hover {
-  background: rgba(148, 158, 214, 0.14);
-  transform: translateX(-1px);
-}
-
-.all-links-panel {
-  padding: 1.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.1rem;
-}
-
-.search-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.search-wrap svg {
-  position: absolute;
-  left: 0.9rem;
-  width: 16px;
-  height: 16px;
-  color: var(--text-3);
-  pointer-events: none;
-}
-
-.search-wrap input {
-  width: 100%;
-  padding: 0.8rem 0.95rem 0.8rem 2.6rem;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-sm);
-  font-size: 0.88rem;
-  background-color: var(--input-bg);
-  color: var(--text-1);
-  font-family: var(--font-body);
-}
-
-.search-wrap input::placeholder {
-  color: var(--text-3);
-}
-
-.search-wrap--header input {
-  border-radius: var(--radius-pill);
-  padding-right: 2.6rem;
-  background-color: var(--panel);
-  backdrop-filter: blur(14px);
-}
-
-.header-search-go {
-  position: absolute;
-  right: 0.35rem;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, var(--teal-bright), var(--teal-dark));
-  color: #08221f;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: transform var(--transition-fast);
-}
-
-.header-search-go svg {
-  width: 14px;
-  height: 14px;
-}
-
-.header-search-go:hover {
-  transform: translateY(-1px) scale(1.05);
-}
-
-.search-wrap input:focus {
-  outline: none;
-  border-color: var(--teal);
-  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.16);
-}
-
-.controls-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.filter-pill {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--text-2);
-  background: rgba(148, 158, 214, 0.08);
-  border: 1px solid var(--panel-border);
-  padding: 0.45rem 0.9rem;
-  border-radius: var(--radius-pill);
-}
-
-.sort-wrap {
-  position: relative;
-}
-
-.sort-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: rgba(148, 158, 214, 0.08);
-  border: 1px solid var(--panel-border);
-  color: var(--text-1);
-  font-size: 0.78rem;
-  font-weight: 600;
-  padding: 0.45rem 0.85rem;
-  border-radius: var(--radius-pill);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.sort-btn svg {
-  width: 13px;
-  height: 13px;
-}
-
-.sort-btn:hover {
-  background: rgba(148, 158, 214, 0.16);
-}
-
-.sort-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  background: var(--panel-solid);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
-  display: flex;
-  flex-direction: column;
-  min-width: 160px;
-  overflow: hidden;
-  z-index: 20;
-}
-
-.sort-menu button {
-  background: transparent;
-  border: none;
-  text-align: left;
-  padding: 0.6rem 0.9rem;
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: var(--text-1);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.sort-menu button:hover {
-  background: rgba(148, 158, 214, 0.1);
-}
-
-.sort-menu button.active {
-  color: var(--teal-bright);
-  font-weight: 700;
-}
-
-/* ==========================================================================
-   Toast notification
-   ========================================================================== */
-
-.toast-alert {
-  position: fixed;
-  bottom: 1.5rem;
-  left: 50%;
-  transform: translateX(-50%) translateY(100px);
-  background-color: var(--panel-solid);
-  color: var(--text-1);
-  padding: 0.8rem 1.5rem 0.8rem 1.3rem;
-  border-radius: var(--radius-sm);
-  font-size: 0.85rem;
-  font-weight: 600;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  z-index: 9999;
-  opacity: 0;
-  transition: transform var(--transition-med), opacity var(--transition-med);
-  pointer-events: none;
-  border: 1px solid var(--panel-border);
-  max-width: 90vw;
-  isolation: isolate;
-}
-
-/* Accent bar as a pseudo-element rather than border-left: a differently
-   coloured border-left combined with border-radius causes the corner
-   miter to render as a detached curved bracket in some browsers. A
-   pseudo-element avoids the border-join glitch entirely. */
-.toast-alert::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
-  background: var(--teal);
-}
-
-.toast-alert.show {
-  transform: translateX(-50%) translateY(0);
-  opacity: 1;
-}
-
-.truncate {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-  display: block;
-}
-
-/* ==========================================================================
-   Responsive — 320 through 1920
-   ========================================================================== */
-
-@media (min-width: 1400px) {
-  .shell {
-    max-width: 1180px;
+function resetCreateBtn() {
+  createBtn.disabled = false;
+  createBtnLabel.textContent = "Create Link";
+}
+
+// ==========================================
+// 5. DATA MUTATIONS & SUPABASE HANDLERS
+// ==========================================
+async function checkCodeExists(code) {
+  const { error, count } = await supabaseClient
+    .from("links")
+    .select("code", { count: "exact", head: true })
+    .eq("code", code.toLowerCase());
+
+  if (error) {
+    console.error("Duplicate checking error:", error);
+    return true;
+  }
+  return count > 0;
+}
+
+async function loadLinks() {
+  const { data, error } = await supabaseClient
+    .from("links")
+    .select("*")
+    .order("created", { ascending: false });
+
+  if (error) {
+    console.error("Failed to recover log archive:", error);
+    return;
+  }
+
+  links = data || [];
+  renderAll();
+}
+
+async function saveLink(link) {
+  const { data, error } = await supabaseClient
+    .from("links")
+    .insert([link])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function openLink(code) {
+  const link = links.find(l => l.code === code);
+  if (!link) return;
+
+  const newClicks = link.clicks + 1;
+
+  try {
+    const { error } = await supabaseClient
+      .from("links")
+      .update({ clicks: newClicks })
+      .eq("code", code);
+
+    if (error) throw error;
+
+    link.clicks = newClicks;
+    renderAll();
+
+    let destination = link.original.trim();
+    if (!/^https?:\/\//i.test(destination)) {
+      destination = "https://" + destination;
+    }
+    window.open(destination, "_blank");
+  } catch (err) {
+    console.error("Analytics logging failed:", err);
+    showToast("Analytics synchronization error.");
   }
 }
 
-@media (max-width: 900px) {
-  .shell {
-    max-width: 100%;
+async function deleteLink(code) {
+  if (!confirm("Completely remove this tracking link?")) return;
+
+  const { error } = await supabaseClient
+    .from("links")
+    .delete()
+    .eq("code", code);
+
+  if (error) {
+    console.error("Purging action error:", error);
+    showToast("Failed to delete tracking link.");
+    return;
   }
+
+  links = links.filter(l => l.code !== code);
+  renderAll();
+  showToast("Tracking link deleted successfully.");
 }
 
-@media (max-width: 640px) {
-  .page {
-    padding: 1.5rem 0.9rem 3rem;
-  }
+function copyLinkToClipboard(code, silent = false) {
+  const fullShortUrl = `${BASE_URL}/api/redirect?id=${code}`;
+  const finish = (ok) => {
+    if (!silent) showToast(ok ? "Tracking link copied to clipboard." : "Copying blocked by browser security settings.");
+  };
 
-  .shell {
-    gap: 1.4rem;
-  }
+  navigator.clipboard.writeText(fullShortUrl).then(() => finish(true)).catch(() => {
+    const fallbackInput = document.createElement("input");
+    fallbackInput.value = fullShortUrl;
+    fallbackInput.style.position = "absolute";
+    fallbackInput.style.left = "-9999px";
+    document.body.appendChild(fallbackInput);
+    fallbackInput.select();
+    try {
+      document.execCommand("copy");
+      finish(true);
+    } catch (err) {
+      console.error("Copy context blocked:", err);
+      finish(false);
+    }
+    document.body.removeChild(fallbackInput);
+  });
 
-  .brand-text h1 {
-    font-size: 1.25rem;
-  }
-
-  .stat-pills {
-    width: 100%;
-  }
-
-  .stat-pill {
-    flex: 1;
-    justify-content: center;
-  }
-
-  .create-panel,
-  .preview-panel,
-  .all-links-panel {
-    padding: 1.25rem;
-  }
-
-  .history-head {
-    padding: 1.1rem 1.25rem;
-  }
-
-  .link-row {
-    padding: 0.9rem 1.25rem;
-    flex-wrap: wrap;
-  }
-
-  .row-main {
-    order: 1;
-    flex-basis: calc(100% - 48px);
-  }
-
-  .row-clicks {
-    order: 3;
-    flex-direction: row;
-    align-items: baseline;
-    gap: 0.3rem;
-    margin-left: calc(38px + 0.9rem);
-  }
-
-  .row-menu {
-    order: 2;
-  }
-
-  .preview-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .preview-actions {
-    grid-template-columns: 1fr;
-  }
-
-  .history-foot {
-    padding: 0.8rem 1.25rem;
-  }
-
-  .controls-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .sort-wrap {
-    width: 100%;
-  }
-
-  .sort-btn {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .sort-menu {
-    left: 0;
-    right: 0;
-  }
+  return fullShortUrl;
 }
 
-@media (max-width: 380px) {
-  .brand-text h1 {
-    font-size: 1.1rem;
+// ==========================================
+// 6. RENDER ENGINE
+// ==========================================
+function renderAll() {
+  updateStats();
+  renderTable();
+  if (!allLinksView.hidden) renderAllLinks();
+}
+
+function updateStats() {
+  const totalClicks = links.reduce((sum, l) => sum + (l.clicks || 0), 0);
+  animateStatValue(statActive, links.length);
+  animateStatValue(statClicks, totalClicks);
+}
+
+// Smoothly counts a stat pill's displayed number up (or down) to a new target,
+// like an odometer, instead of snapping straight to the new value.
+function animateStatValue(el, target) {
+  const from = parseInt(el.dataset.rawValue || el.textContent.replace(/[^0-9-]/g, ""), 10) || 0;
+  if (from === target) {
+    el.dataset.rawValue = String(target);
+    el.textContent = target.toLocaleString();
+    return;
   }
 
-  .brand-text p {
-    font-size: 0.6rem;
+  cancelAnimationFrame(el._statRaf);
+  const duration = 650;
+  const start = performance.now();
+
+  const step = (now) => {
+    const progress = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3); // ease-out-cubic
+    const value = Math.round(from + (target - from) * eased);
+    el.textContent = value.toLocaleString();
+    if (progress < 1) {
+      el._statRaf = requestAnimationFrame(step);
+    } else {
+      el.dataset.rawValue = String(target);
+      el.textContent = target.toLocaleString();
+    }
+  };
+  el._statRaf = requestAnimationFrame(step);
+}
+
+function formatDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d)) return "—";
+  const datePart = d.toLocaleDateString([], { month: "short", day: "2-digit", year: "numeric" });
+  const timePart = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `${datePart} · ${timePart}`;
+}
+
+function closeAllKebabMenus() {
+  document.querySelectorAll(".kebab-menu").forEach(m => m.hidden = true);
+}
+
+// Recent (top 5) list on the dashboard
+function renderTable() {
+  footerCount.textContent = `${links.length} link${links.length === 1 ? '' : 's'} created`;
+  buildLinkList(tableBody, links.slice(0, 5));
+}
+
+// Full searchable / sortable list
+function renderAllLinks() {
+  let list = links.slice();
+
+  if (searchTerm) {
+    list = list.filter(l =>
+      l.code.toLowerCase().includes(searchTerm) ||
+      l.original.toLowerCase().includes(searchTerm)
+    );
   }
 
-  .stat-pill-label {
-    display: none;
+  switch (sortMode) {
+    case "oldest":
+      list.sort((a, b) => new Date(a.created) - new Date(b.created));
+      break;
+    case "most":
+      list.sort((a, b) => (b.clicks || 0) - (a.clicks || 0));
+      break;
+    case "least":
+      list.sort((a, b) => (a.clicks || 0) - (b.clicks || 0));
+      break;
+    case "az":
+      list.sort((a, b) => a.code.localeCompare(b.code));
+      break;
+    case "newest":
+    default:
+      list.sort((a, b) => new Date(b.created) - new Date(a.created));
+      break;
   }
 
-  .input-wrap input,
-  .search-wrap input {
-    font-size: 0.85rem;
+  filterPill.textContent = `All Links · ${links.length}`;
+  buildLinkList(allTableBody, list, { emptyLabel: searchTerm ? "No links match your search." : "No links created yet." });
+}
+
+// Shared row builder used by both the dashboard preview list and the full list
+function buildLinkList(container, list, opts = {}) {
+  container.innerHTML = "";
+
+  if (list.length === 0) {
+    const emptyState = document.createElement("div");
+    emptyState.className = "empty-state";
+    emptyState.innerHTML = `<span class="icon">&#128230;</span><span>${opts.emptyLabel || "No links created yet. Get started above."}</span>`;
+    container.appendChild(emptyState);
+    return;
   }
 
-  .row-clicks {
-    margin-left: 0.6rem;
-  }
+  list.forEach(link => {
+    container.appendChild(buildLinkRow(link));
+  });
+}
+
+function buildLinkRow(link) {
+  const row = document.createElement("div");
+  row.className = "link-row";
+
+  const clickCount = link.clicks || 0;
+  const clicksAlignClass = String(clickCount).length <= 2 ? " clicks-center" : "";
+  const flag = flagForCode(link.code);
+
+  row.innerHTML = `
+    <div class="row-icon row-icon--flag" style="background-image:url('https://flagcdn.com/w80/${flag}.png')" title="${flag.toUpperCase()}"></div>
+    <div class="row-main">
+      <div class="row-code">${escapeHtml(link.code)}</div>
+      <div class="row-url">${escapeHtml(link.original)}</div>
+      <div class="row-meta">
+        <span class="badge-active"><i></i>Active</span>
+        <span class="row-date">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          ${formatDate(link.created)}
+        </span>
+      </div>
+    </div>
+    <div class="row-clicks${clicksAlignClass}">
+      <span class="clicks-num">${clickCount.toLocaleString()}</span>
+      <span class="clicks-label">CLICKS</span>
+    </div>
+    <div class="row-menu">
+      <button class="kebab-btn" aria-label="More actions" title="More actions">&#8942;</button>
+      <div class="kebab-menu" hidden>
+        <button data-action="copy">Copy Link</button>
+        <button data-action="visit">Visit Link</button>
+        <button data-action="delete">Delete</button>
+      </div>
+    </div>
+  `;
+
+  const codeEl = row.querySelector(".row-code");
+  codeEl.addEventListener("click", () => openLink(link.code));
+
+  const kebabBtn = row.querySelector(".kebab-btn");
+  const kebabMenu = row.querySelector(".kebab-menu");
+  kebabBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const wasHidden = kebabMenu.hidden;
+    closeAllKebabMenus();
+    sortMenu.hidden = true;
+    kebabMenu.hidden = !wasHidden;
+  });
+  kebabMenu.addEventListener("click", (e) => e.stopPropagation());
+
+  kebabMenu.querySelector('[data-action="copy"]').addEventListener("click", () => {
+    copyLinkToClipboard(link.code);
+    kebabMenu.hidden = true;
+  });
+  kebabMenu.querySelector('[data-action="visit"]').addEventListener("click", () => {
+    openLink(link.code);
+    kebabMenu.hidden = true;
+  });
+  kebabMenu.querySelector('[data-action="delete"]').addEventListener("click", () => {
+    kebabMenu.hidden = true;
+    deleteLink(link.code);
+  });
+
+  return row;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str == null ? "" : String(str);
+  return div.innerHTML;
+}
+
+// ==========================================
+// 7. RECEIPT / PREVIEW PANEL
+// ==========================================
+function displayReceipt(link) {
+  const fullShortUrl = `${BASE_URL}/api/redirect?id=${link.code}`;
+
+  document.getElementById("gen-short").textContent = fullShortUrl;
+  document.getElementById("gen-orig").textContent = link.original;
+  document.getElementById("gen-code").textContent = link.code;
+  document.getElementById("gen-time").textContent = formatDate(link.created || new Date().toISOString());
+
+  document.getElementById("copy-inline-btn").onclick = () => copyLinkToClipboard(link.code);
+  document.getElementById("copy-btn").onclick = () => copyLinkToClipboard(link.code);
+  document.getElementById("open-btn").onclick = () => openLink(link.code);
+
+  previewPlaceholder.hidden = true;
+  previewCreated.hidden = false;
+}
+
+// ==========================================
+// 8. GLOBAL NOTIFICATION TOAST
+// ==========================================
+function showToast(message) {
+  clearTimeout(showToast.timer);
+  toast.textContent = message;
+  toast.classList.add("show");
+
+  showToast.timer = setTimeout(() => {
+    toast.classList.remove("show");
+  }, 2800);
 }

@@ -1,9 +1,23 @@
 import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
 
 const supabase = createClient(
   "https://jctdtavzpcxnvpebpyqx.supabase.co",
   "sb_publishable_QUrKq5DUY3pwmHv4HEjKCQ_bGFZi4VQ"
 );
+
+// ------------------------------------------------------------------
+// Fallback device fingerprint (IP + User-Agent hash).
+// Used when the cookie is missing (cleared, incognito, new browser)
+// so the same physical device still isn't double-counted.
+// ------------------------------------------------------------------
+function fingerprint(ip, ua) {
+  return crypto
+    .createHash("sha256")
+    .update(`${ip || ""}|${ua || ""}`)
+    .digest("hex")
+    .slice(0, 32);
+}
 
 // ------------------------------------------------------------------
 // Lightweight User-Agent parsing (no external dependency required)
@@ -80,12 +94,35 @@ export default async function handler(req, res) {
     const ua = req.headers["user-agent"] || "";
     const { os, browser, device } = parseUserAgent(ua);
 
+    // ---- IP + fallback fingerprint ----
+    const ip =
+      (req.headers["x-forwarded-for"] || "").split(",")[0].trim() ||
+      req.socket?.remoteAddress ||
+      "";
+    const deviceFp = fingerprint(ip, ua);
+
     // ---- Geo (Vercel injects these headers automatically at the edge) ----
     const country = req.headers["x-vercel-ip-country"] || null;
     const countryCode = req.headers["x-vercel-ip-country"] || null;
     const city = req.headers["x-vercel-ip-city"]
       ? decodeURIComponent(req.headers["x-vercel-ip-city"])
       : null;
+
+    // ---- Has this visitor already been counted for this link? ----
+    // The "clicks" total on the link is meant to be a unique-visitor count,
+    // not a raw hit count — so a repeat visit from someone who already
+    // clicked this exact link shouldn't increment it again. Every visit is
+    // still logged in the "clicks" table below (that's what powers the
+    // visitor history / Returning-vs-New status on the Users page); this
+    // check only gates the link-level counter.
+    const { count: priorVisits, error: priorErr } = await supabase
+      .from("clicks")
+      .select("id", { count: "exact", head: true })
+      .eq("link_code", id.toLowerCase())
+      .or(`visitor_id.eq.${visitorId},device_fp.eq.${deviceFp}`);
+
+    if (priorErr) console.error("Prior-visit lookup failed:", priorErr);
+    const isFirstClickFromVisitor = !priorErr && (priorVisits || 0) === 0;
 
     // IMPORTANT: both writes are awaited (in parallel) BEFORE the redirect
     // is sent. On Vercel, a serverless function's execution is frozen the
@@ -94,15 +131,12 @@ export default async function handler(req, res) {
     // is why the "clicks" table was staying empty. Using Promise.all here
     // keeps things fast (both requests run concurrently) while guaranteeing
     // the insert actually completes.
-    const [, { error: clickErr }] = await Promise.all([
-      supabase
-        .from("links")
-        .update({ clicks: data.clicks + 1 })
-        .eq("code", id.toLowerCase()),
+    const tasks = [
       supabase.from("clicks").insert([
         {
           link_code: id.toLowerCase(),
           visitor_id: visitorId,
+          device_fp: deviceFp,
           country,
           country_code: countryCode,
           city,
@@ -111,7 +145,18 @@ export default async function handler(req, res) {
           os
         }
       ])
-    ]);
+    ];
+    if (isFirstClickFromVisitor) {
+      tasks.push(
+        supabase
+          .from("links")
+          .update({ clicks: data.clicks + 1 })
+          .eq("code", id.toLowerCase())
+      );
+    }
+
+    const results = await Promise.all(tasks);
+    const clickErr = results[0].error;
 
     if (clickErr) console.error("Visitor log insert failed:", clickErr);
 

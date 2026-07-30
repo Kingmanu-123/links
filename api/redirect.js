@@ -1,22 +1,34 @@
 import { createClient } from "@supabase/supabase-js";
-import crypto from "crypto";
+import { createHash } from "crypto";
 
 const supabase = createClient(
   "https://jctdtavzpcxnvpebpyqx.supabase.co",
   "sb_publishable_QUrKq5DUY3pwmHv4HEjKCQ_bGFZi4VQ"
 );
 
-// ------------------------------------------------------------------
-// Fallback device fingerprint (IP + User-Agent hash).
-// Used when the cookie is missing (cleared, incognito, new browser)
-// so the same physical device still isn't double-counted.
-// ------------------------------------------------------------------
-function fingerprint(ip, ua) {
-  return crypto
-    .createHash("sha256")
-    .update(`${ip || ""}|${ua || ""}`)
-    .digest("hex")
-    .slice(0, 32);
+// How long a device fingerprint (IP + device type + OS) stays eligible to
+// be matched back to an earlier visitor when there's no cookie to go on
+// (private/incognito windows, or a different browser on the same
+// machine). Kept short-ish on purpose: it's a heuristic, not an identity
+// system, and a shorter window limits how often two different people on
+// the same shared IP (office wifi, campus network, carrier NAT) could
+// get merged into one "visitor".
+const DEVICE_MATCH_WINDOW_HOURS = 12;
+
+// Salt so ip_hash isn't a trivial lookup table of hashed IPs. Override
+// with an IP_HASH_SALT environment variable in Vercel for a private
+// value; this constant is just a safe-by-default fallback.
+const IP_HASH_SALT = process.env.IP_HASH_SALT || "link-tracker-v1";
+
+function hashIp(ip) {
+  if (!ip) return null;
+  return createHash("sha256").update(IP_HASH_SALT + "|" + ip).digest("hex").slice(0, 32);
+}
+
+function getClientIp(req) {
+  const fwd = req.headers["x-forwarded-for"];
+  if (fwd) return fwd.split(",")[0].trim();
+  return req.socket?.remoteAddress || null;
 }
 
 // ------------------------------------------------------------------
@@ -80,26 +92,9 @@ export default async function handler(req, res) {
       return res.status(404).send("Tracking link not found");
     }
 
-    // ---- Visitor fingerprint (cookie-based, persists across visits) ----
-    let visitorId = getCookie(req, "ltv_id");
-    if (!visitorId) {
-      visitorId = genVisitorId();
-    }
-    res.setHeader(
-      "Set-Cookie",
-      `ltv_id=${visitorId}; Max-Age=31536000; Path=/; SameSite=Lax`
-    );
-
     // ---- Device / browser / OS ----
     const ua = req.headers["user-agent"] || "";
     const { os, browser, device } = parseUserAgent(ua);
-
-    // ---- IP + fallback fingerprint ----
-    const ip =
-      (req.headers["x-forwarded-for"] || "").split(",")[0].trim() ||
-      req.socket?.remoteAddress ||
-      "";
-    const deviceFp = fingerprint(ip, ua);
 
     // ---- Geo (Vercel injects these headers automatically at the edge) ----
     const country = req.headers["x-vercel-ip-country"] || null;
@@ -108,22 +103,63 @@ export default async function handler(req, res) {
       ? decodeURIComponent(req.headers["x-vercel-ip-city"])
       : null;
 
-    // ---- Has this visitor already been counted for this link? ----
-    // The "clicks" total on the link is meant to be a unique-visitor count,
-    // not a raw hit count — so a repeat visit from someone who already
-    // clicked this exact link shouldn't increment it again. Every visit is
-    // still logged in the "clicks" table below (that's what powers the
-    // visitor history / Returning-vs-New status on the Users page); this
-    // check only gates the link-level counter.
-    const { count: priorVisits, error: priorErr } = await supabase
-      .from("clicks")
-      .select("id", { count: "exact", head: true })
-      .eq("link_code", id.toLowerCase())
-      .or(`visitor_id.eq.${visitorId},device_fp.eq.${deviceFp}`);
+    const clientIp = getClientIp(req);
+    const ipHash = hashIp(clientIp);
 
-    if (priorErr) console.error("Prior-visit lookup failed:", priorErr);
-    const isFirstClickFromVisitor = !priorErr && (priorVisits || 0) === 0;
+    // ---- Visitor identity ----
+    // 1. Cookie, if present — this is the strongest signal (same browser,
+    //    same profile, not incognito) and is checked first.
+    // 2. Otherwise, this looks like a first-ever request from this browser
+    //    (fresh install, cleared cookies, or a private/incognito window).
+    //    Before minting a brand-new visitor, check whether the same
+    //    physical device — same IP + same device type + same OS — was
+    //    already seen for this link recently. If so, reuse that visitor's
+    //    ID instead of a new one, so a second browser or a fresh
+    //    incognito window on the same machine doesn't get double-counted
+    //    or show up as a separate person on the Users page.
+    // 3. Otherwise, this really is a new visitor — mint a fresh ID.
+    let visitorId = getCookie(req, "ltv_id");
 
+    if (!visitorId) {
+      if (ipHash) {
+        const since = new Date(Date.now() - DEVICE_MATCH_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+        const { data: deviceMatch, error: deviceMatchErr } = await supabase
+          .from("clicks")
+          .select("visitor_id")
+          .eq("link_code", id.toLowerCase())
+          .eq("ip_hash", ipHash)
+          .eq("device", device)
+          .eq("os", os)
+          .gte("created_at", since)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (deviceMatchErr) console.error("Device-match lookup failed:", deviceMatchErr);
+        if (deviceMatch?.visitor_id) {
+          visitorId = deviceMatch.visitor_id;
+        }
+      }
+      if (!visitorId) visitorId = genVisitorId();
+    }
+
+    // Cookie is set every time (even when matched by device fallback) so
+    // that *this* browser recognizes itself by cookie on the very next
+    // visit, rather than needing the fallback lookup again.
+    res.setHeader(
+      "Set-Cookie",
+      `ltv_id=${visitorId}; Max-Age=31536000; Path=/; SameSite=Lax`
+    );
+
+    // ---- Log this visit and bump the raw click counter ----
+    // "clicks" on the link is a raw hit count: every visit increments it,
+    // including repeat visits from the same visitor (Click = one visit).
+    // Uniqueness lives entirely in the "clicks" table's visitor_id column —
+    // the dashboard derives Users/Visitors by deduping that table, never by
+    // gating this counter. Conflating the two here is what let the
+    // link-level counter silently become a unique-visitor count instead of
+    // a click count.
+    //
     // IMPORTANT: both writes are awaited (in parallel) BEFORE the redirect
     // is sent. On Vercel, a serverless function's execution is frozen the
     // instant the response is sent — any un-awaited ("fire-and-forget")
@@ -136,24 +172,20 @@ export default async function handler(req, res) {
         {
           link_code: id.toLowerCase(),
           visitor_id: visitorId,
-          device_fp: deviceFp,
           country,
           country_code: countryCode,
           city,
           device,
           browser,
-          os
+          os,
+          ip_hash: ipHash
         }
-      ])
+      ]),
+      supabase
+        .from("links")
+        .update({ clicks: data.clicks + 1 })
+        .eq("code", id.toLowerCase())
     ];
-    if (isFirstClickFromVisitor) {
-      tasks.push(
-        supabase
-          .from("links")
-          .update({ clicks: data.clicks + 1 })
-          .eq("code", id.toLowerCase())
-      );
-    }
 
     const results = await Promise.all(tasks);
     const clickErr = results[0].error;

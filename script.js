@@ -7,6 +7,17 @@ const BASE_URL = "https://links-one-rho.vercel.app";
 
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// Delays calling `fn` until `wait` ms have passed since the last call —
+// used to stop rapid-fire input events (e.g. typing in a search box) from
+// each triggering a full listing rebuild.
+function debounce(fn, wait) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), wait);
+  };
+}
+
 // Global state
 let links = [];
 let clicksLog = [];          // flat list of every visitor click, newest first
@@ -35,6 +46,47 @@ const headerSearchGo = document.getElementById("header-search-go");
 const themeToggleBtn = document.getElementById("theme-toggle-btn");
 const brandSubtitle = document.getElementById("brand-subtitle");
 
+// DOM Elements — campaign setup
+const campaignInput = document.getElementById("campaign-input");
+const campaignError = document.getElementById("campaign-error");
+const campaignSetupArrow = document.getElementById("campaign-setup-arrow");
+const campaignSetupPanel = document.getElementById("campaign-setup-panel");
+const campaignPreviewIcons = document.getElementById("campaign-preview-icons");
+const campaignTagsDisplay = document.getElementById("campaign-tags-display");
+const platformGrid = document.getElementById("platform-grid");
+const tagInput = document.getElementById("tag-input");
+const tagSuggestions = document.getElementById("tag-suggestions");
+const tagChipList = document.getElementById("tag-chip-list");
+const campaignCancelBtn = document.getElementById("campaign-cancel-btn");
+const campaignConfirmBtn = document.getElementById("campaign-confirm-btn");
+const createPanel = document.querySelector(".create-panel");
+
+// Fixed platform catalog (mirrors `social_platforms` seed rows — matched by slug)
+const SOCIAL_PLATFORMS = [
+  { slug: "facebook",  name: "Facebook",     color: "#3b82f6", initials: "Fb" },
+  { slug: "instagram", name: "Instagram",    color: "#ec4899", initials: "Ig" },
+  { slug: "twitter",   name: "X / Twitter",  color: "#38bdf8", initials: "X" },
+  { slug: "linkedin",  name: "LinkedIn",     color: "#0ea5e9", initials: "In" },
+  { slug: "youtube",   name: "YouTube",      color: "#f87171", initials: "Yt" },
+  { slug: "whatsapp",  name: "WhatsApp",     color: "#34d399", initials: "Wa" },
+  { slug: "telegram",  name: "Telegram",     color: "#5eead4", initials: "Tg" },
+  { slug: "snapchat",  name: "Snapchat",     color: "#fbbf24", initials: "Sc" }
+];
+const PLATFORM_BY_SLUG = Object.fromEntries(SOCIAL_PLATFORMS.map(p => [p.slug, p]));
+let PLATFORM_ID_BY_SLUG = {}; // filled once social_platforms table is loaded
+
+const DEFAULT_TAG_SUGGESTIONS = ["Sale", "New", "Black Friday", "Offer", "Festival", "Promotion"];
+let knownTagNames = DEFAULT_TAG_SUGGESTIONS.slice(); // grows with tags loaded from DB
+
+let campaignSetupOpen = false;
+let tempPlatforms = [];   // slugs being edited live inside the setup panel
+let tempTags = [];        // tag names being edited live inside the setup panel
+let committedPlatforms = []; // slugs applied to the link currently being created
+let committedTags = [];      // tag names applied to the link currently being created
+
+let linkPlatformsByCode = {}; // code -> [{slug?, name}]
+let linkTagsByCode = {};      // code -> [tagName, ...]
+
 // Decorative country flags shown (randomly, but consistently per link) on row icons
 // when no real visitor geo-data exists yet for that link.
 const FLAG_CODES = ["us", "gb", "de", "fr", "in", "jp", "br", "ca", "au", "nl", "se", "mx", "kr", "it", "es", "sg"];
@@ -54,6 +106,7 @@ const allLinksView = document.getElementById("all-links-view");
 const allUsersView = document.getElementById("all-users-view");
 const viewAllBtn = document.getElementById("view-all-btn");
 const backBtn = document.getElementById("back-btn");
+const linksUsersBtn = document.getElementById("links-users-btn");
 const usersHomeBtn = document.getElementById("users-home-btn");
 const usersLinksBtn = document.getElementById("users-links-btn");
 
@@ -66,6 +119,8 @@ const filterPill = document.getElementById("filter-pill");
 const sortBtn = document.getElementById("sort-btn");
 const sortLabel = document.getElementById("sort-label");
 const sortMenu = document.getElementById("sort-menu");
+const linksExportBtn = document.getElementById("links-export-btn");
+const linksExportMenu = document.getElementById("links-export-menu");
 
 // DOM Elements — all user listings
 const allUsersBody = document.getElementById("all-users-body");
@@ -77,9 +132,76 @@ const usersSortMenu = document.getElementById("users-sort-menu");
 const usersLinkFilterBtn = document.getElementById("users-link-filter-btn");
 const usersLinkFilterLabel = document.getElementById("users-link-filter-label");
 const usersLinkFilterMenu = document.getElementById("users-link-filter-menu");
+const usersExportBtn = document.getElementById("users-export-btn");
+const usersExportMenu = document.getElementById("users-export-menu");
+
+// DOM Elements — new filter system (Choose Type / Link Name / Tag Filter)
+const linksTypeBtn = document.getElementById("links-type-btn");
+const linksTypeLabel = document.getElementById("links-type-label");
+const linksTypeMenu = document.getElementById("links-type-menu");
+const linksNameBtn = document.getElementById("links-name-btn");
+const linksNameLabel = document.getElementById("links-name-label");
+const linksNameMenu = document.getElementById("links-name-menu");
+const linksTagBtn = document.getElementById("links-tag-btn");
+const linksTagLabel = document.getElementById("links-tag-label");
+const linksTagMenu = document.getElementById("links-tag-menu");
+const linksTagTabs = document.getElementById("links-tag-tabs");
+const linksTagOptions = document.getElementById("links-tag-options");
+const linksTagClear = document.getElementById("links-tag-clear");
+const linksTagChips = document.getElementById("links-tag-chips");
+
+const usersTypeBtn = document.getElementById("users-type-btn");
+const usersTypeLabel = document.getElementById("users-type-label");
+const usersTypeMenu = document.getElementById("users-type-menu");
+const usersTagBtn = document.getElementById("users-tag-btn");
+const usersTagLabel = document.getElementById("users-tag-label");
+const usersTagMenu = document.getElementById("users-tag-menu");
+const usersTagTabs = document.getElementById("users-tag-tabs");
+const usersTagOptions = document.getElementById("users-tag-options");
+const usersTagClear = document.getElementById("users-tag-clear");
+const usersTagChips = document.getElementById("users-tag-chips");
+
+let linksTagFilterCtrl = null;
+let usersTagFilterCtrl = null;
 
 let usersLinkFilterMode = "all"; // "all" or a specific link code
-let pendingVisitorHighlight = null; // { linkCode, visitorId, createdAt } — set right before navigating to the Users page so we can scroll to + expand that exact visit once rendered
+let pendingVisitorHighlight = null;
+
+// ---- New filter system state (Choose Type / Link Name / Tag Filter) ----
+// "all" | "no-campaign" | "campaign"
+let linksTypeFilter = "all";
+let usersTypeFilter = "all";
+// "all" | a specific link code — mirrors usersLinkFilterMode's shape for the
+// new Link Name filter on the All Tracking Links page.
+let linksNameFilter = "all";
+// Which tag category tab is active inside each Tag Filter panel:
+// "all" | "new" | "predefined". Kept as an object so it can be passed by
+// reference into the shared tag-filter controller.
+const linksTagCategory = { value: "all" };
+const usersTagCategory = { value: "all" };
+// Actively-selected tag names filtering each page (multi-select).
+let linksSelectedTags = new Set();
+let usersSelectedTags = new Set(); // { linkCode, visitorId, createdAt } — set right before navigating to the Users page so we can scroll to + expand that exact visit once rendered
+
+// Pagination state — All Tracking Links & All User Listings both render in
+// fixed-size pages instead of dumping the whole (potentially large) list
+// into the DOM at once. This is what fixes the "list goes blank while
+// scrolling fast" issue on mobile: the browser was choking on hundreds of
+// heavy, blurred rows in one scrollable column.
+let linksPage = 1;
+let linksPageSize = 6;
+let usersPage = 1;
+let usersPageSize = 6;
+const PAGE_SIZE_OPTIONS = [6, 10, 25, 50, 100];
+let linksLoaded = false;
+let clicksLoaded = false;
+
+// Snapshots of exactly what's currently on screen (after filters/search/sort
+// + the active page of pagination) for each list page — Export reads these
+// so it always matches what the user is looking at, rather than re-deriving
+// the filtered set separately and risking drift.
+let linksExportSnapshot = { rows: [], filterLabel: "All Links" };
+let usersExportSnapshot = { rows: [], filterLabel: "All Users" };
 
 const SORT_LABELS = {
   newest: "Newest First",
@@ -95,35 +217,301 @@ const USER_SORT_LABELS = {
   country: "Country A → Z"
 };
 
+const TYPE_LABELS = {
+  all: "All Links",
+  "no-campaign": "No Campaign",
+  campaign: "All Campaign"
+};
+
+// ==========================================
+// 2a. FILTER SYSTEM HELPERS (Choose Type / Link Name / Tag Filter)
+// Shared by both "All Tracking Links" and "All User Listings" — pure
+// helpers only, no DOM/data mutation, so they're safe to call from either
+// page's render/populate functions without side effects.
+// ==========================================
+function linkMatchesType(link, type) {
+  if (type === "no-campaign") return !link.campaign_name;
+  if (type === "campaign") return !!link.campaign_name;
+  return true; // "all"
+}
+
+function isPredefinedTagName(name) {
+  return DEFAULT_TAG_SUGGESTIONS.some(t => t.toLowerCase() === String(name || "").toLowerCase());
+}
+
+function tagPoolForCategory(category) {
+  if (category === "predefined") return DEFAULT_TAG_SUGGESTIONS.slice();
+  if (category === "new") return knownTagNames.filter(t => !isPredefinedTagName(t));
+  return knownTagNames.slice();
+}
+
+// Closes every open filter dropdown across both pages (Type / Link Name /
+// Tag Filter / Sort / pagination page-size). Delegated by class rather than
+// tracking each menu individually, so it also cleanly closes pagination's
+// page-size dropdown even though that markup is rebuilt on every render.
+function closeAllFilterMenus() {
+  document.querySelectorAll(".sort-menu, .lt-dd-menu").forEach((menu) => {
+    if (!menu.hidden) {
+      menu.hidden = true;
+      const trigger = menu.previousElementSibling;
+      if (trigger && trigger.tagName === "BUTTON") trigger.setAttribute("aria-expanded", "false");
+    }
+  });
+}
+
+// Wires the standard open/close/toggle behavior shared by every dropdown
+// trigger in the app: clicking the button closes any other open dropdown
+// first, then toggles this one; clicks inside the menu don't bubble up and
+// close it (so multi-select panels like Tag Filter stay open).
+function wireDropdownToggle(btn, menu) {
+  if (!btn || !menu) return;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const wasOpen = !menu.hidden;
+    closeAllFilterMenus();
+    menu.hidden = wasOpen;
+    btn.setAttribute("aria-expanded", String(!menu.hidden));
+  });
+  menu.addEventListener("click", (e) => e.stopPropagation());
+}
+
+// Builds/refreshes a single-select "Link Name" style dropdown (used for
+// both the new Tracking Links filter and the existing Users Link filter),
+// scoped to whichever link codes currently match `type`.
+function populateNameFilterMenu({ menu, label, type, currentValue, onChange, allLabel = "All Links" }) {
+  const codes = links
+    .filter(l => linkMatchesType(l, type))
+    .map(l => l.code)
+    .sort((a, b) => a.localeCompare(b));
+
+  const safeValue = currentValue === "all" || codes.includes(currentValue) ? currentValue : "all";
+  if (label && safeValue !== currentValue) label.textContent = allLabel;
+
+  const optionsHtml = [`<button type="button" data-name="all" class="${safeValue === "all" ? "active" : ""}">${allLabel}</button>`]
+    .concat(codes.length
+      ? codes.map(c => `<button type="button" data-name="${escapeHtml(c)}" class="${safeValue === c ? "active" : ""}">${escapeHtml(c)}</button>`)
+      : [`<div class="lt-dd-empty">No links in this type yet.</div>`]
+    );
+  menu.innerHTML = optionsHtml.join("");
+
+  menu.querySelectorAll("button[data-name]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      menu.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      menu.hidden = true;
+      const trigger = menu.previousElementSibling;
+      if (trigger) trigger.setAttribute("aria-expanded", "false");
+      onChange(btn.dataset.name, btn.textContent);
+    });
+  });
+
+  return safeValue;
+}
+
+// Wires a "Choose Type" dropdown (fixed 3 options, no scrolling needed).
+function setupTypeFilter({ btn, label, menu, onChange }) {
+  wireDropdownToggle(btn, menu);
+  menu.querySelectorAll("button[data-type]").forEach((btn2) => {
+    btn2.addEventListener("click", () => {
+      menu.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+      btn2.classList.add("active");
+      menu.hidden = true;
+      btn.setAttribute("aria-expanded", "false");
+      label.textContent = TYPE_LABELS[btn2.dataset.type] || "Choose Type";
+      onChange(btn2.dataset.type);
+    });
+  });
+}
+
+// Renders the checkbox list inside a Tag Filter panel for the active tab.
+function renderTagOptions(optionsEl, category, selectedSet, onToggle) {
+  const pool = tagPoolForCategory(category);
+  if (!pool.length) {
+    const emptyLabel = category === "new" ? "No newly created tags yet." : category === "predefined" ? "No predefined tags." : "No tags yet.";
+    optionsEl.innerHTML = `<div class="lt-dd-empty">${emptyLabel}</div>`;
+    return;
+  }
+  optionsEl.innerHTML = pool.map(name => `
+    <label class="lt-tag-option">
+      <input type="checkbox" value="${escapeHtml(name)}" ${selectedSet.has(name) ? "checked" : ""}>
+      <span>${escapeHtml(name)}</span>
+    </label>
+  `).join("");
+  optionsEl.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+    cb.addEventListener("change", () => onToggle(cb.value, cb.checked));
+  });
+}
+
+// Renders the removable-chip row underneath the controls, plus a
+// "Clear All" chip once at least one tag is selected.
+function renderTagChipsRow(chipsEl, selectedSet, onRemove) {
+  if (!selectedSet.size) {
+    chipsEl.hidden = true;
+    chipsEl.innerHTML = "";
+    return;
+  }
+  chipsEl.hidden = false;
+  const clearId = `${chipsEl.id}-clearall`;
+  chipsEl.innerHTML = Array.from(selectedSet).map(name => `
+    <span class="lt-chip">${ICONS.tag}${escapeHtml(name)}<button type="button" class="lt-chip-remove" data-tag="${escapeHtml(name)}" aria-label="Remove ${escapeHtml(name)} filter">&times;</button></span>
+  `).join("") + `<button type="button" class="lt-chip-clearall" id="${clearId}">Clear All</button>`;
+
+  chipsEl.querySelectorAll(".lt-chip-remove").forEach((b) => {
+    b.addEventListener("click", () => onRemove(b.dataset.tag));
+  });
+  const clearAllBtn = document.getElementById(clearId);
+  if (clearAllBtn) clearAllBtn.addEventListener("click", () => onRemove(null));
+}
+
+// Wires a complete Tag Filter controller (tabs + scrollable checkbox list +
+// clear button + chip row) for one page. Returns { refreshOptions } so the
+// caller can re-render just the option pool (e.g. once tags finish loading
+// from Supabase) without disturbing the current selection.
+function setupTagFilter({ btn, label, menu, tabsEl, optionsEl, clearBtn, chipsEl, selectedSet, categoryRef, onApply }) {
+  wireDropdownToggle(btn, menu);
+
+  function refreshLabel() {
+    label.textContent = selectedSet.size ? `Tags · ${selectedSet.size}` : "Tags";
+  }
+
+  function refreshOptions() {
+    renderTagOptions(optionsEl, categoryRef.value, selectedSet, (name, checked) => {
+      if (checked) selectedSet.add(name); else selectedSet.delete(name);
+      refreshAll();
+    });
+  }
+
+  function refreshChips() {
+    renderTagChipsRow(chipsEl, selectedSet, (tag) => {
+      if (tag === null) selectedSet.clear(); else selectedSet.delete(tag);
+      refreshAll();
+    });
+  }
+
+  function refreshAll() {
+    refreshOptions();
+    refreshChips();
+    refreshLabel();
+    onApply();
+  }
+
+  tabsEl.querySelectorAll("button[data-cat]").forEach((tabBtn) => {
+    tabBtn.addEventListener("click", () => {
+      categoryRef.value = tabBtn.dataset.cat;
+      tabsEl.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+      tabBtn.classList.add("active");
+      refreshOptions();
+    });
+  });
+
+  clearBtn.addEventListener("click", () => {
+    selectedSet.clear();
+    refreshAll();
+  });
+
+  refreshOptions();
+  refreshChips();
+  refreshLabel();
+
+  return { refreshOptions };
+}
+
 // ==========================================
 // 2. LIFECYCLE ROUTING & APP STARTUP
 // ==========================================
+// ==========================================
+// View mode (Grid View only)
+// ==========================================
+// The List View toggle button has been removed — Grid View is now the only
+// (and default) layout for both the All Tracking Links and All User
+// Listings pages. `getViewMode` is kept as a small shim (rather than
+// inlining "grid" everywhere) so buildLinkList's mode switch and any other
+// caller keep working unchanged.
+function getViewMode() {
+  return "grid";
+}
+
+// Makes sure the container always carries the "grid-view" class, regardless
+// of any older "lt-view-modes" preference a returning visitor's browser may
+// still have saved from before List View was removed.
+function forceGridView(toggleId, containerEl) {
+  const toggle = document.getElementById(toggleId);
+  if (toggle) toggle.dataset.active = "grid";
+  if (containerEl) containerEl.classList.add("grid-view");
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
+  forceGridView("links-view-toggle", allTableBody);
+  forceGridView("users-view-toggle", allUsersBody);
+  try { localStorage.removeItem("lt-view-modes"); } catch {}
+  renderSkeletonRows(tableBody, 3);
+  renderSkeletonRows(allTableBody, 6);
+  renderSkeletonRows(allUsersBody, 6);
   loadLinks();
   loadClicks();
+  loadSocialPlatforms().then(loadCampaignJoins);
+  loadKnownTags();
 
   createBtn.addEventListener("click", handleCreateLink);
-  viewAllBtn.addEventListener("click", () => switchView("all"));
+
+  // Campaign Setup — opening/closing the right-panel workflow
+  campaignSetupArrow.addEventListener("click", () => {
+    if (campaignSetupOpen) { closeCampaignSetup(false); return; }
+    openCampaignSetup();
+  });
+  campaignCancelBtn.addEventListener("click", () => closeCampaignSetup(false));
+  campaignConfirmBtn.addEventListener("click", () => closeCampaignSetup(true));
+
+  tagInput.addEventListener("input", renderTagSuggestions);
+  tagInput.addEventListener("focus", renderTagSuggestions);
+  tagInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addTempTag(tagInput.value);
+    }
+  });
+  document.addEventListener("click", (e) => {
+    if (!tagInput.contains(e.target) && !tagSuggestions.contains(e.target)) {
+      tagSuggestions.hidden = true;
+    }
+  });
+
+  // Lock the rest of the Create Link form while Campaign Setup is open —
+  // clicking/focusing another field cancels the attempt and explains why.
+  [urlInput, aliasInput].forEach(el => {
+    el.addEventListener("focus", () => guardLockedField(el));
+  });
+  viewAllBtn.addEventListener("click", () => { linksPage = 1; switchView("all"); });
   backBtn.addEventListener("click", () => switchView("dashboard"));
+  linksUsersBtn.addEventListener("click", () => openUsersView());
   usersHomeBtn.addEventListener("click", () => switchView("dashboard"));
-  usersLinksBtn.addEventListener("click", () => switchView("all"));
+  usersLinksBtn.addEventListener("click", () => { linksPage = 1; switchView("all"); });
   themeToggleBtn.addEventListener("click", toggleTheme);
 
-  searchInput.addEventListener("input", (e) => {
+  // Each render fully rebuilds the listing (container.innerHTML = ""
+  // then re-appends every card), which replays each card's entrance
+  // animation. Re-rendering on every single keystroke made the whole
+  // list/grid visibly flash on each character typed — debouncing so the
+  // rebuild only fires once typing pauses removes that flicker while
+  // still filtering live as the user types.
+  searchInput.addEventListener("input", debounce((e) => {
     searchTerm = e.target.value.trim().toLowerCase();
+    linksPage = 1;
     renderAllLinks();
-  });
+  }, 220));
 
-  usersSearchInput.addEventListener("input", (e) => {
+  usersSearchInput.addEventListener("input", debounce((e) => {
     userSearchTerm = e.target.value.trim().toLowerCase();
+    usersPage = 1;
     renderAllUsers();
-  });
+  }, 220));
 
   const runHeaderSearch = () => {
     const term = headerSearchInput.value.trim();
     searchTerm = term.toLowerCase();
     searchInput.value = term;
+    linksPage = 1;
     switchView("all");
   };
   headerSearchInput.addEventListener("keydown", (e) => {
@@ -131,12 +519,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   headerSearchGo.addEventListener("click", runHeaderSearch);
 
-  sortBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    sortMenu.hidden = !sortMenu.hidden;
-    sortBtn.setAttribute("aria-expanded", String(!sortMenu.hidden));
-  });
-
+  wireDropdownToggle(sortBtn, sortMenu);
   sortMenu.querySelectorAll("button[data-sort]").forEach((btn) => {
     btn.addEventListener("click", () => {
       sortMode = btn.dataset.sort;
@@ -145,16 +528,12 @@ document.addEventListener("DOMContentLoaded", () => {
       btn.classList.add("active");
       sortMenu.hidden = true;
       sortBtn.setAttribute("aria-expanded", "false");
+      linksPage = 1;
       renderAllLinks();
     });
   });
 
-  usersSortBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    usersSortMenu.hidden = !usersSortMenu.hidden;
-    usersSortBtn.setAttribute("aria-expanded", String(!usersSortMenu.hidden));
-  });
-
+  wireDropdownToggle(usersSortBtn, usersSortMenu);
   usersSortMenu.querySelectorAll("button[data-usersort]").forEach((btn) => {
     btn.addEventListener("click", () => {
       userSortMode = btn.dataset.usersort;
@@ -163,53 +542,111 @@ document.addEventListener("DOMContentLoaded", () => {
       btn.classList.add("active");
       usersSortMenu.hidden = true;
       usersSortBtn.setAttribute("aria-expanded", "false");
+      usersPage = 1;
       renderAllUsers();
     });
   });
 
-  usersLinkFilterBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    usersLinkFilterMenu.hidden = !usersLinkFilterMenu.hidden;
-    usersLinkFilterBtn.setAttribute("aria-expanded", String(!usersLinkFilterMenu.hidden));
+  wireDropdownToggle(linksExportBtn, linksExportMenu);
+  linksExportMenu.querySelectorAll("button[data-export]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      linksExportMenu.hidden = true;
+      linksExportBtn.setAttribute("aria-expanded", "false");
+      exportLinks(btn.dataset.export);
+    });
   });
 
-  // Close any open dropdown (sort menus or row kebab menus) on outside click
+  wireDropdownToggle(usersExportBtn, usersExportMenu);
+  usersExportMenu.querySelectorAll("button[data-export]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      usersExportMenu.hidden = true;
+      usersExportBtn.setAttribute("aria-expanded", "false");
+      exportUsers(btn.dataset.export);
+    });
+  });
+
+  // ---- All Tracking Links: Choose Type + Link Name + Tag Filter ----
+  setupTypeFilter({
+    btn: linksTypeBtn, label: linksTypeLabel, menu: linksTypeMenu,
+    onChange: (type) => {
+      linksTypeFilter = type;
+      linksNameFilter = populateNameFilterMenu({
+        menu: linksNameMenu, label: linksNameLabel, type: linksTypeFilter, currentValue: "all",
+        onChange: (val, text) => {
+          linksNameFilter = val;
+          linksNameLabel.textContent = text;
+          linksPage = 1;
+          renderAllLinks();
+        }
+      });
+      linksNameLabel.textContent = "All Links";
+      linksPage = 1;
+      renderAllLinks();
+    }
+  });
+
+  wireDropdownToggle(linksNameBtn, linksNameMenu);
+  populateNameFilterMenu({
+    menu: linksNameMenu, label: linksNameLabel, type: linksTypeFilter, currentValue: linksNameFilter,
+    onChange: (val, text) => {
+      linksNameFilter = val;
+      linksNameLabel.textContent = text;
+      linksPage = 1;
+      renderAllLinks();
+    }
+  });
+
+  linksTagFilterCtrl = setupTagFilter({
+    btn: linksTagBtn, label: linksTagLabel, menu: linksTagMenu, tabsEl: linksTagTabs,
+    optionsEl: linksTagOptions, clearBtn: linksTagClear, chipsEl: linksTagChips,
+    selectedSet: linksSelectedTags, categoryRef: linksTagCategory,
+    onApply: () => { linksPage = 1; renderAllLinks(); }
+  });
+
+  // ---- All User Listings: Choose Type + Link Name + Tag Filter ----
+  setupTypeFilter({
+    btn: usersTypeBtn, label: usersTypeLabel, menu: usersTypeMenu,
+    onChange: (type) => {
+      usersTypeFilter = type;
+      usersLinkFilterMode = "all";
+      usersLinkFilterLabel.textContent = "All Links";
+      populateUsersLinkFilter();
+      usersPage = 1;
+      renderAllUsers();
+    }
+  });
+
+  wireDropdownToggle(usersLinkFilterBtn, usersLinkFilterMenu);
+
+  usersTagFilterCtrl = setupTagFilter({
+    btn: usersTagBtn, label: usersTagLabel, menu: usersTagMenu, tabsEl: usersTagTabs,
+    optionsEl: usersTagOptions, clearBtn: usersTagClear, chipsEl: usersTagChips,
+    selectedSet: usersSelectedTags, categoryRef: usersTagCategory,
+    onApply: () => { usersPage = 1; renderAllUsers(); }
+  });
+
+  // Close any open dropdown (filter menus or row kebab menus) on outside click
   document.addEventListener("click", () => {
-    sortMenu.hidden = true;
-    sortBtn.setAttribute("aria-expanded", "false");
-    usersSortMenu.hidden = true;
-    usersSortBtn.setAttribute("aria-expanded", "false");
-    usersLinkFilterMenu.hidden = true;
-    usersLinkFilterBtn.setAttribute("aria-expanded", "false");
+    closeAllFilterMenus();
     closeAllKebabMenus();
   });
 });
 
-// Rebuilds the "Filter by link" dropdown options from the current set of
-// links. Called every time the Users page is opened, so it always reflects
+// Rebuilds the "Link Name" dropdown options from the current set of links,
+// scoped to whichever Choose Type is active. Called every time the Users
+// page is opened (and whenever links/type change), so it always reflects
 // links created since the last visit.
 function populateUsersLinkFilter() {
-  const options = [`<button data-linkfilter="all">All Links</button>`]
-    .concat(
-      links
-        .slice()
-        .sort((a, b) => a.code.localeCompare(b.code))
-        .map(l => `<button data-linkfilter="${escapeHtml(l.code)}">${escapeHtml(l.code)}</button>`)
-    );
-  usersLinkFilterMenu.innerHTML = options.join("");
-
-  usersLinkFilterMenu.querySelectorAll("button[data-linkfilter]").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.linkfilter === usersLinkFilterMode);
-    btn.addEventListener("click", () => {
-      usersLinkFilterMode = btn.dataset.linkfilter;
-      usersLinkFilterLabel.textContent = usersLinkFilterMode === "all" ? "All Links" : usersLinkFilterMode;
-      usersLinkFilterMenu.querySelectorAll("button").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      usersLinkFilterMenu.hidden = true;
-      usersLinkFilterBtn.setAttribute("aria-expanded", "false");
+  usersLinkFilterMode = populateNameFilterMenu({
+    menu: usersLinkFilterMenu, label: usersLinkFilterLabel, type: usersTypeFilter, currentValue: usersLinkFilterMode,
+    onChange: (val, text) => {
+      usersLinkFilterMode = val;
+      usersLinkFilterLabel.textContent = text;
+      usersPage = 1;
       renderAllUsers();
-    });
+    }
   });
+  usersLinkFilterLabel.textContent = usersLinkFilterMode === "all" ? "All Links" : usersLinkFilterMode;
 }
 
 // Central entry point for jumping to the Users page, optionally pre-filtered
@@ -217,9 +654,13 @@ function populateUsersLinkFilter() {
 // buttons, the dashboard's "View all N visitors" link, and the All Tracking
 // Links page's per-row eye button.
 function openUsersView(linkCode, highlight) {
+  usersTypeFilter = "all";
+  if (usersTypeLabel) usersTypeLabel.textContent = "Choose Type";
+  usersTypeMenu.querySelectorAll("button").forEach(b => b.classList.toggle("active", b.dataset.type === "all"));
   usersLinkFilterMode = linkCode || "all";
   usersLinkFilterLabel.textContent = linkCode || "All Links";
   pendingVisitorHighlight = highlight || null;
+  usersPage = 1;
   switchView("users");
 }
 
@@ -230,10 +671,10 @@ function switchView(view) {
   allUsersView.hidden = view !== "users";
 
   if (view === "all") {
-    renderAllLinks();
+    if (linksLoaded) { renderAllLinks(); } else { renderSkeletonRows(allTableBody, 6); document.getElementById("links-pagination").innerHTML = ""; }
   } else if (view === "users") {
     populateUsersLinkFilter();
-    renderAllUsers();
+    if (clicksLoaded) { renderAllUsers(); } else { renderSkeletonRows(allUsersBody, 6); document.getElementById("users-pagination").innerHTML = ""; }
   }
 
   if (view !== "dashboard") {
@@ -244,14 +685,21 @@ function switchView(view) {
 // ==========================================
 // 2b. THEME SWITCHER (Winter Peaks ⇄ Aurora Glass)
 // ==========================================
+const THEME_ORDER = ["winter", "aurora", "lumina"];
+
 function initTheme() {
   const saved = localStorage.getItem("lt-theme");
-  if (saved === "aurora") applyTheme("aurora", false);
+  if (THEME_ORDER.includes(saved) && saved !== "winter") applyTheme(saved, false);
 }
 
 function toggleTheme() {
-  const isAurora = document.body.classList.contains("theme-aurora");
-  applyTheme(isAurora ? "winter" : "aurora", true);
+  const current = document.body.classList.contains("theme-aurora")
+    ? "aurora"
+    : document.body.classList.contains("theme-lumina")
+      ? "lumina"
+      : "winter";
+  const next = THEME_ORDER[(THEME_ORDER.indexOf(current) + 1) % THEME_ORDER.length];
+  applyTheme(next, true);
 }
 
 function applyTheme(name, animate) {
@@ -260,11 +708,14 @@ function applyTheme(name, animate) {
     btn.classList.add("theme-pulse");
     setTimeout(() => btn.classList.remove("theme-pulse"), 700);
   }
+  document.body.classList.remove("theme-aurora", "theme-lumina");
   if (name === "aurora") {
     document.body.classList.add("theme-aurora");
     brandSubtitle.textContent = "Aurora Glass · Analytics";
+  } else if (name === "lumina") {
+    document.body.classList.add("theme-lumina");
+    brandSubtitle.textContent = "Lumina Glass · Analytics";
   } else {
-    document.body.classList.remove("theme-aurora");
     brandSubtitle.textContent = "URL Shortener & Analytics";
   }
   localStorage.setItem("lt-theme", name);
@@ -298,14 +749,26 @@ function randomCode(length = 6) {
 // 4. CORE ACTION HANDLERS
 // ==========================================
 async function handleCreateLink() {
+  if (campaignSetupOpen) {
+    showToast("Please complete or cancel Campaign Setup first.");
+    return;
+  }
+
   urlError.hidden = true;
   aliasError.hidden = true;
+  campaignError.hidden = true;
 
   const originalUrl = normalizeUrl(urlInput.value);
+  const campaignName = campaignInput.value.trim();
   let alias = aliasInput.value.trim().toLowerCase();
 
   if (!originalUrl) {
     urlError.hidden = false;
+    return;
+  }
+
+  if (!campaignName) {
+    campaignError.hidden = false;
     return;
   }
 
@@ -336,19 +799,25 @@ async function handleCreateLink() {
   const payload = {
     original: originalUrl,
     code: alias,
-    clicks: 0
+    clicks: 0,
+    campaign_name: campaignName
   };
 
   try {
     const newRecord = await saveLink(payload);
 
     if (newRecord) {
+      const platformSlugs = committedPlatforms.slice();
+      const tagNames = committedTags.slice();
+      await saveCampaignRelations(newRecord.code, platformSlugs, tagNames);
+
       links.unshift(newRecord);
       renderAll();
       displayReceipt(newRecord);
 
       urlInput.value = "";
       aliasInput.value = "";
+      resetCampaignState();
     } else {
       showToast("Database synchronization error.");
     }
@@ -389,10 +858,13 @@ async function loadLinks() {
 
   if (error) {
     console.error("Failed to recover log archive:", error);
+    linksLoaded = true;
+    renderAll();
     return;
   }
 
   links = data || [];
+  linksLoaded = true;
   renderAll();
 }
 
@@ -409,16 +881,38 @@ async function loadClicks() {
   if (error) {
     console.warn("Visitor analytics table not available yet:", error.message);
     clicksLog = [];
+  clicksByCode = {};
+    clicksLoaded = true;
+    if (currentView === "users") renderAllUsers();
     return;
   }
 
   clicksLog = data || [];
+  rebuildClicksByCodeIndex();
+  clicksLoaded = true;
   renderAll();
   if (currentView === "users") renderAllUsers();
 }
 
+// clicksForCode() is called repeatedly while building every link/grid row —
+// a few times per row, for every row on the page, on every re-render (each
+// filter/sort/search change). It used to re-scan the entire clicksLog array
+// (up to 500 rows) each call, which is what made filter switching and
+// scrolling feel sluggish once there was any real amount of visitor data.
+// Indexing once by link_code turns every one of those lookups into an O(1)
+// map read instead of an O(n) scan.
+let clicksByCode = {};
+
+function rebuildClicksByCodeIndex() {
+  const map = {};
+  for (const c of clicksLog) {
+    (map[c.link_code] || (map[c.link_code] = [])).push(c);
+  }
+  clicksByCode = map;
+}
+
 function clicksForCode(code) {
-  return clicksLog.filter(c => c.link_code === code);
+  return clicksByCode[code] || [];
 }
 
 async function saveLink(link) {
@@ -512,12 +1006,38 @@ function copyLinkToClipboard(code, silent = false) {
 function renderAll() {
   updateStats();
   renderTable();
+  refreshFilterOptionPools();
   if (currentView === "all") renderAllLinks();
   if (currentView === "users") renderAllUsers();
 }
 
+// Keeps every filter dropdown's option pool in sync with the latest data
+// (links created/deleted, tags loaded from Supabase) without touching the
+// user's current selections. Safe to call before the dropdowns exist yet
+// (very first loadLinks()/loadClicks() calls can race DOMContentLoaded).
+function refreshFilterOptionPools() {
+  if (!linksNameMenu || !usersLinkFilterMenu) return;
+
+  linksNameFilter = populateNameFilterMenu({
+    menu: linksNameMenu, label: linksNameLabel, type: linksTypeFilter, currentValue: linksNameFilter,
+    onChange: (val, text) => {
+      linksNameFilter = val;
+      linksNameLabel.textContent = text;
+      linksPage = 1;
+      renderAllLinks();
+    }
+  });
+
+  populateUsersLinkFilter();
+
+  if (linksTagFilterCtrl) linksTagFilterCtrl.refreshOptions();
+  if (usersTagFilterCtrl) usersTagFilterCtrl.refreshOptions();
+}
+
 function updateStats() {
   const totalClicks = links.reduce((sum, l) => sum + (l.clicks || 0), 0);
+  statActive.classList.remove("is-loading");
+  statClicks.classList.remove("is-loading");
   animateStatValue(statActive, links.length);
   animateStatValue(statClicks, totalClicks);
 }
@@ -561,18 +1081,132 @@ function formatDate(iso) {
 }
 
 function closeAllKebabMenus() {
-  document.querySelectorAll(".kebab-menu").forEach(m => m.hidden = true);
+  document.querySelectorAll(".kebab-menu, .grid-kebab-menu").forEach(m => m.hidden = true);
+  document.querySelectorAll(".kebab-open").forEach(el => el.classList.remove("kebab-open"));
 }
 
-// Recent (top 5) list on the dashboard
+// Recent (top 6) list on the dashboard — always List View (no grid toggle here)
 function renderTable() {
-  footerCount.textContent = `${links.length} link${links.length === 1 ? '' : 's'} created`;
-  buildLinkList(tableBody, links.slice(0, 5), { context: "dashboard" });
+  footerCount.classList.remove("is-loading");
+  footerCount.textContent = `${links.length.toLocaleString()} link${links.length === 1 ? '' : 's'} created`;
+  buildLinkList(tableBody, links.slice(0, 6), { context: "dashboard", mode: "list" });
 }
 
 // Full searchable / sortable list
+// ==========================================
+// PAGINATION — shared by All Tracking Links & All User Listings.
+// Keeps the DOM small (one page's worth of rows at a time) which is what
+// actually fixes the mobile "list disappears on fast scroll" bug, and
+// surfaces total counts + page controls as requested.
+// ==========================================
+function paginate(list, page, pageSize) {
+  const total = list.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const start = (safePage - 1) * pageSize;
+  const pageItems = list.slice(start, start + pageSize);
+  return { pageItems, total, totalPages, safePage, start };
+}
+
+function renderPagination(el, { page, pageSize, total, onPageChange, onPageSizeChange }) {
+  if (total === 0) {
+    el.innerHTML = "";
+    return;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = Math.min(total, page * pageSize);
+
+  // Windowed page numbers: first, last, current +/-1, with ellipses.
+  const pages = [];
+  for (let p = 1; p <= totalPages; p++) {
+    if (p === 1 || p === totalPages || Math.abs(p - page) <= 1) {
+      pages.push(p);
+    } else if (pages[pages.length - 1] !== "…") {
+      pages.push("…");
+    }
+  }
+
+  // Custom Lumia-glass dropdown (instead of a native <select>) so the
+  // page-size picker shares the exact same look, animation, and scrollbar
+  // language as every other filter dropdown in the app.
+  const ddId = `${el.id}-pagesize`;
+  const sizeOptionsHtml = PAGE_SIZE_OPTIONS
+    .map(n => `<button type="button" data-size="${n}" class="${n === pageSize ? "active" : ""}">${n} / page</button>`)
+    .join("");
+
+  el.innerHTML = `
+    <div class="pagination-summary">Showing <strong>${start}–${end}</strong> of <strong>${total}</strong></div>
+    <div class="pagination-controls">
+      <button type="button" class="page-btn page-nav" data-page="${page - 1}" ${page <= 1 ? "disabled" : ""} aria-label="Previous page">${ICONS.chevron}</button>
+      <div class="page-numbers">
+        ${pages.map(p => p === "…"
+          ? `<span class="page-ellipsis">…</span>`
+          : `<button type="button" class="page-btn page-num ${p === page ? "active" : ""}" data-page="${p}">${p}</button>`
+        ).join("")}
+      </div>
+      <button type="button" class="page-btn page-nav page-nav--next" data-page="${page + 1}" ${page >= totalPages ? "disabled" : ""} aria-label="Next page">${ICONS.chevron}</button>
+      <div class="lt-dd-wrap lt-pagesize-wrap">
+        <button type="button" class="page-size-btn lt-dd-btn" id="${ddId}-btn" aria-haspopup="true" aria-expanded="false" aria-label="Rows per page">
+          <span id="${ddId}-label">${pageSize} / page</span>
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="lt-dd-menu lt-dd-scroll lt-pagesize-scroll" id="${ddId}-menu" hidden>${sizeOptionsHtml}</div>
+      </div>
+    </div>
+  `;
+
+  el.querySelectorAll(".page-btn[data-page]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const target = Number(btn.dataset.page);
+      if (target >= 1 && target <= totalPages) onPageChange(target);
+    });
+  });
+
+  const ddBtn = el.querySelector(`#${ddId}-btn`);
+  const ddMenu = el.querySelector(`#${ddId}-menu`);
+  const ddLabel = el.querySelector(`#${ddId}-label`);
+  wireDropdownToggle(ddBtn, ddMenu);
+  ddMenu.querySelectorAll("button[data-size]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      ddMenu.hidden = true;
+      ddBtn.setAttribute("aria-expanded", "false");
+      ddLabel.textContent = `${btn.dataset.size} / page`;
+      onPageSizeChange(Number(btn.dataset.size));
+    });
+  });
+}
+
+// Lightweight themed skeleton shown the moment a page loads, before the
+// first Supabase response lands — so slow mobile connections show a clear
+// "loading" state instead of an empty panel that looks broken.
+function renderSkeletonRows(container, count = 4) {
+  container.innerHTML = Array.from({ length: count }).map(() => `
+    <div class="skeleton-row">
+      <span class="skeleton-block skeleton-icon"></span>
+      <span class="skeleton-lines">
+        <span class="skeleton-block skeleton-line skeleton-line--wide"></span>
+        <span class="skeleton-block skeleton-line skeleton-line--narrow"></span>
+      </span>
+    </div>
+  `).join("");
+}
+
 function renderAllLinks() {
   let list = links.slice();
+
+  if (linksTypeFilter !== "all") {
+    list = list.filter(l => linkMatchesType(l, linksTypeFilter));
+  }
+
+  if (linksNameFilter !== "all") {
+    list = list.filter(l => l.code === linksNameFilter);
+  }
+
+  if (linksSelectedTags.size) {
+    list = list.filter(l => (linkTagsByCode[l.code] || []).some(t => linksSelectedTags.has(t)));
+  }
 
   if (searchTerm) {
     list = list.filter(l =>
@@ -600,8 +1234,25 @@ function renderAllLinks() {
       break;
   }
 
-  filterPill.textContent = `All Links · ${links.length}`;
-  buildLinkList(allTableBody, list, { emptyLabel: searchTerm ? "No links match your search." : "No links created yet.", context: "all" });
+  const anyFilterActive = !!searchTerm || linksTypeFilter !== "all" || linksNameFilter !== "all" || linksSelectedTags.size > 0;
+  filterPill.textContent = anyFilterActive
+    ? `All Links · ${list.length.toLocaleString()} of ${links.length.toLocaleString()}`
+    : `All Links · ${links.length.toLocaleString()}`;
+
+  const { pageItems, safePage, totalPages } = paginate(list, linksPage, linksPageSize);
+  linksPage = safePage;
+
+  linksExportSnapshot = { rows: pageItems, filterLabel: filterPill.textContent };
+
+  buildLinkList(allTableBody, pageItems, { emptyLabel: anyFilterActive ? "No links match your filters." : "No links created yet.", context: "all", mode: getViewMode() });
+
+  renderPagination(document.getElementById("links-pagination"), {
+    page: linksPage,
+    pageSize: linksPageSize,
+    total: list.length,
+    onPageChange: (p) => { linksPage = p; renderAllLinks(); document.getElementById("all-table-body").scrollIntoView({ behavior: "smooth", block: "start" }); },
+    onPageSizeChange: (size) => { linksPageSize = size; linksPage = 1; renderAllLinks(); }
+  });
 }
 
 // Shared row builder used by both the dashboard preview list and the full list
@@ -616,8 +1267,18 @@ function buildLinkList(container, list, opts = {}) {
     return;
   }
 
+  const mode = opts.mode === "grid" ? "grid" : "list";
+  const context = opts.context || "dashboard";
   list.forEach(link => {
-    container.appendChild(buildLinkItem(link, opts.context || "dashboard"));
+    let node;
+    if (context === "dashboard") {
+      node = buildHistoryItem(link);
+    } else if (mode === "grid") {
+      node = buildGridCard(link, context);
+    } else {
+      node = buildLinkItem(link, context);
+    }
+    container.appendChild(node);
   });
 }
 
@@ -635,8 +1296,292 @@ const ICONS = {
   user: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="8.5" r="3.5" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 20c1.4-3.6 4.5-5.5 7.5-5.5s6.1 1.9 7.5 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   eye: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/></svg>',
-  arrow: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  arrow: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  tag: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 5h8l8 8-8 8-8-8V5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="8" cy="9" r="1.4" fill="currentColor"/></svg>',
+  status: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 13h4l2.5-7 4 14 2.5-7h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  copy: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="8.5" y="8.5" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M15.5 8.5V5.5A2 2 0 0 0 13.5 3.5H5.5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3" stroke="currentColor" stroke-width="1.8"/></svg>',
+  external: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 6H5.5A1.5 1.5 0 0 0 4 7.5v11A1.5 1.5 0 0 0 5.5 20h11a1.5 1.5 0 0 0 1.5-1.5V15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M14 4h6v6M20 4l-9 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  chart: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 20V10M11 20V4M18 20v-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  click: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3.5v3M4.6 6.1l2.1 2.1M3.5 12h3M15.4 6.1l-2.1 2.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M9.3 9.4l8.7 3.3-3.5 1.5-1.5 3.5-3.7-8.3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></svg>'
 };
+
+// ==========================================
+// 2c. CAMPAIGN SETUP (multi-platform + tags)
+// ==========================================
+// Real recognizable glyphs for each platform (instead of the old two-letter
+// text badges), so the icon still reads correctly at a glance even scaled
+// up big — vector paths stay crisp at any zoom, where text initials just
+// looked blurry/generic once enlarged.
+const PLATFORM_ICON_SVGS = {
+  facebook: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M15.5 8.5h2V5.6c-.35-.05-1.55-.15-2.95-.15-2.92 0-4.92 1.83-4.92 5.2v2.75H6.75v3.3h2.88V21h3.4v-6.7h2.76l.44-3.3h-3.2V10.9c0-.96.26-1.6 1.47-1.6Z"/></svg>',
+  instagram: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="4" width="16" height="16" rx="4.5"/><circle cx="12" cy="12" r="3.4"/><circle cx="16.4" cy="7.6" r="0.9" fill="#fff" stroke="none"/></svg>',
+  twitter: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M5 5l14 14M19 5 5 19" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>',
+  linkedin: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><rect x="4.5" y="9.5" width="2.8" height="9" /><circle cx="5.9" cy="6" r="1.7"/><path d="M10 9.5h2.7v1.3c.5-.85 1.5-1.55 3.05-1.55 3 0 3.75 1.75 3.75 4.4v5.35h-2.8v-4.75c0-1.2-.35-2.05-1.55-2.05-1.15 0-1.7.75-1.7 2.05v4.75H10V9.5Z"/></svg>',
+  youtube: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><rect x="3.5" y="6.5" width="17" height="11" rx="3.2"/><path d="M10.5 9.8v4.4l4-2.2-4-2.2Z" fill="#0a0d1c"/></svg>',
+  whatsapp: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M12 4.5a7.4 7.4 0 0 0-6.35 11.2L4.5 19.5l3.95-1.1A7.4 7.4 0 1 0 12 4.5Z" fill="none" stroke="#fff" stroke-width="1.7"/><path d="M9.2 9.6c.2-.5.4-.5.6-.5h.45c.15 0 .35 0 .5.4.2.5.65 1.7.7 1.8.05.15.1.3 0 .5-.1.2-.15.3-.3.45-.15.15-.3.35-.45.45-.15.15-.3.3-.15.6.15.3.7 1.15 1.5 1.85 1 .9 1.85 1.2 2.15 1.35.3.15.5.1.65-.1.2-.2.7-.85.9-1.15.2-.3.4-.25.65-.15.25.1 1.65.8 1.9.95.25.15.45.2.5.35.05.15.05.85-.2 1.65-.25.8-1.5 1.45-2.1 1.5-.55.1-1.2.15-1.95-.1a11 11 0 0 1-1.15-.4C11 18.7 8.3 16.9 7.3 14.2c-.15-.4-.25-.75-.25-1.1 0-.65.35-1.25.55-1.5.2-.25.5-.25.65-.25Z" fill="#fff"/></svg>',
+  telegram: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 12.2 18.7 6.4c.65-.25 1.25.35.95 1.05l-2.8 11.7c-.2.85-.75 1.05-1.35.65l-3.5-2.6-1.7 1.65c-.2.2-.4.3-.7.3l.25-3.55 6.4-5.85c.3-.25-.05-.4-.4-.15l-7.9 5-3.4-1.05c-.75-.25-.75-.75.15-1.15Z"/></svg>',
+  snapchat: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M12 4.2c2.2 0 3.6 1.75 3.5 3.85-.05.9-.1 1.6 0 2.05.1.05.5.15.95-.1.35-.2.85 0 .8.5-.05.5-.75.85-1.25 1.1-.3.15-.35.35-.25.6.35.9 1.5 1.55 2.5 1.7.3.05.35.35.1.6-.35.35-1.1.55-1.6.65-.15.35-.1.65-.35.85-.35.25-1.35.05-2.15.35-.7.25-1.15 1.35-2.25 1.35s-1.55-1.1-2.25-1.35c-.8-.3-1.8-.1-2.15-.35-.25-.2-.2-.5-.35-.85-.5-.1-1.25-.3-1.6-.65-.25-.25-.2-.55.1-.6 1-.15 2.15-.8 2.5-1.7.1-.25.05-.45-.25-.6-.5-.25-1.2-.6-1.25-1.1-.05-.5.45-.7.8-.5.45.25.85.15.95.1.1-.45.05-1.15 0-2.05-.1-2.1 1.3-3.85 3.5-3.85Z"/></svg>'
+};
+
+function platformIconHtml(slug) {
+  return PLATFORM_ICON_SVGS[slug] || "";
+}
+
+function platformBadgeHtml(slug, size = "sm") {
+  const p = PLATFORM_BY_SLUG[slug];
+  if (!p) return "";
+  return `<span class="platform-badge platform-badge--${size}" style="background:${p.color}" title="${escapeHtml(p.name)}">${platformIconHtml(slug)}</span>`;
+}
+
+function tagBadgeHtml(name) {
+  return `<span class="tag-badge">${ICONS.tag}${escapeHtml(name)}</span>`;
+}
+
+function renderCampaignPreviewIcons() {
+  campaignPreviewIcons.innerHTML = committedPlatforms.map(slug => platformBadgeHtml(slug)).join("");
+}
+
+function renderCampaignTagsDisplay() {
+  if (!committedTags.length) {
+    campaignTagsDisplay.hidden = true;
+    campaignTagsDisplay.innerHTML = "";
+    return;
+  }
+  campaignTagsDisplay.hidden = false;
+  campaignTagsDisplay.innerHTML = committedTags.map(t => tagBadgeHtml(t)).join("");
+}
+
+function renderPlatformGrid() {
+  platformGrid.innerHTML = SOCIAL_PLATFORMS.map(p => `
+    <button type="button" class="platform-tile ${tempPlatforms.includes(p.slug) ? "selected" : ""}" data-slug="${p.slug}" aria-pressed="${tempPlatforms.includes(p.slug)}">
+      <span class="platform-tile-icon" style="background:${p.color}">${platformIconHtml(p.slug)}</span>
+      <span class="platform-tile-name">${escapeHtml(p.name)}</span>
+    </button>
+  `).join("");
+
+  platformGrid.querySelectorAll(".platform-tile").forEach(tile => {
+    tile.addEventListener("click", () => {
+      const slug = tile.dataset.slug;
+      if (tempPlatforms.includes(slug)) {
+        tempPlatforms = tempPlatforms.filter(s => s !== slug);
+      } else {
+        tempPlatforms.push(slug);
+      }
+      renderPlatformGrid();
+    });
+  });
+}
+
+function renderTagChips() {
+  tagChipList.innerHTML = tempTags.map(name => `
+    <span class="tag-chip">${ICONS.tag}${escapeHtml(name)}<button type="button" class="tag-chip-remove" data-tag="${escapeHtml(name)}" aria-label="Remove tag ${escapeHtml(name)}">&times;</button></span>
+  `).join("");
+
+  tagChipList.querySelectorAll(".tag-chip-remove").forEach(btn => {
+    btn.addEventListener("click", () => {
+      tempTags = tempTags.filter(t => t !== btn.dataset.tag);
+      renderTagChips();
+    });
+  });
+}
+
+function addTempTag(rawName) {
+  const name = rawName.trim();
+  if (!name) return;
+  const exists = tempTags.some(t => t.toLowerCase() === name.toLowerCase());
+  if (!exists) tempTags.push(name);
+  tagInput.value = "";
+  tagSuggestions.hidden = true;
+  renderTagChips();
+}
+
+function renderTagSuggestions() {
+  const term = tagInput.value.trim().toLowerCase();
+  const pool = Array.from(new Set([...knownTagNames, ...DEFAULT_TAG_SUGGESTIONS]));
+  const matches = pool.filter(name =>
+    !tempTags.some(t => t.toLowerCase() === name.toLowerCase()) &&
+    (term === "" || name.toLowerCase().includes(term))
+  ).slice(0, 8);
+
+  if (!matches.length) {
+    tagSuggestions.hidden = true;
+    tagSuggestions.innerHTML = "";
+    return;
+  }
+
+  tagSuggestions.hidden = false;
+  tagSuggestions.innerHTML = matches.map(name => `<button type="button" data-tag="${escapeHtml(name)}">${ICONS.tag}${escapeHtml(name)}</button>`).join("");
+  tagSuggestions.querySelectorAll("button[data-tag]").forEach(btn => {
+    btn.addEventListener("click", () => addTempTag(btn.dataset.tag));
+  });
+}
+
+function openCampaignSetup() {
+  campaignSetupOpen = true;
+  tempPlatforms = committedPlatforms.slice();
+  tempTags = committedTags.slice();
+
+  previewPlaceholder.hidden = true;
+  previewCreated.hidden = true;
+  campaignSetupPanel.hidden = false;
+  campaignSetupArrow.setAttribute("aria-expanded", "true");
+  createPanel.classList.add("setup-locked");
+
+  renderPlatformGrid();
+  renderTagChips();
+  tagSuggestions.hidden = true;
+}
+
+function closeCampaignSetup(applyChanges) {
+  if (applyChanges) {
+    committedPlatforms = tempPlatforms.slice();
+    committedTags = tempTags.slice();
+    renderCampaignPreviewIcons();
+    renderCampaignTagsDisplay();
+  }
+
+  campaignSetupOpen = false;
+  campaignSetupPanel.hidden = true;
+  campaignSetupArrow.setAttribute("aria-expanded", "false");
+  createPanel.classList.remove("setup-locked");
+
+  // Restore whichever preview state was showing before setup opened.
+  if (previewCreated.dataset.hasContent === "true") {
+    previewCreated.hidden = false;
+  } else {
+    previewPlaceholder.hidden = false;
+  }
+}
+
+function resetCampaignState() {
+  committedPlatforms = [];
+  committedTags = [];
+  tempPlatforms = [];
+  tempTags = [];
+  campaignInput.value = "";
+  campaignError.hidden = true;
+  renderCampaignPreviewIcons();
+  renderCampaignTagsDisplay();
+}
+
+function guardLockedField(el) {
+  if (!campaignSetupOpen) return false;
+  el.blur();
+  showToast("Please complete or cancel Campaign Setup first.");
+  return true;
+}
+
+async function loadSocialPlatforms() {
+  const { data, error } = await supabaseClient.from("social_platforms").select("*");
+  if (error) {
+    console.warn("Social platforms table not available yet:", error.message);
+    return;
+  }
+  PLATFORM_ID_BY_SLUG = {};
+  (data || []).forEach(p => { PLATFORM_ID_BY_SLUG[p.slug] = p.id; });
+}
+
+async function loadKnownTags() {
+  const { data, error } = await supabaseClient.from("tags").select("name");
+  if (error) {
+    console.warn("Tags table not available yet:", error.message);
+    return;
+  }
+  const dbNames = (data || []).map(t => t.name);
+  knownTagNames = Array.from(new Set([...DEFAULT_TAG_SUGGESTIONS, ...dbNames]));
+}
+
+// Loads which platforms/tags belong to which link, so every listing page
+// (dashboard, All Tracking Links, All User Listings) can show them.
+async function loadCampaignJoins() {
+  const { data: lp, error: lpErr } = await supabaseClient
+    .from("link_platforms")
+    .select("link_code, social_platforms(slug, name)");
+  if (!lpErr && lp) {
+    const map = {};
+    lp.forEach(row => {
+      if (!row.social_platforms) return;
+      (map[row.link_code] ||= []).push(row.social_platforms);
+    });
+    linkPlatformsByCode = map;
+  } else if (lpErr) {
+    console.warn("link_platforms table not available yet:", lpErr.message);
+  }
+
+  const { data: lt, error: ltErr } = await supabaseClient
+    .from("link_tags")
+    .select("link_code, tags(name)");
+  if (!ltErr && lt) {
+    const map = {};
+    lt.forEach(row => {
+      if (!row.tags) return;
+      (map[row.link_code] ||= []).push(row.tags.name);
+    });
+    linkTagsByCode = map;
+  } else if (ltErr) {
+    console.warn("link_tags table not available yet:", ltErr.message);
+  }
+
+  renderAll();
+}
+
+async function ensureTagIds(tagNames) {
+  const ids = [];
+  for (const name of tagNames) {
+    try {
+      const { data: existing } = await supabaseClient
+        .from("tags").select("id").ilike("name", name).maybeSingle();
+      if (existing) { ids.push(existing.id); continue; }
+
+      const slug = name.toLowerCase().trim().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+      const { data: created, error } = await supabaseClient
+        .from("tags").insert([{ name, slug }]).select().single();
+      if (error) { console.error("Tag creation failed:", error); continue; }
+      ids.push(created.id);
+    } catch (err) {
+      console.error("Tag lookup/creation failed:", err);
+    }
+  }
+  return ids;
+}
+
+// Persists the platform + tag selections for a just-created link. Fails
+// gracefully (matching loadClicks' pattern) if the campaign tables haven't
+// been created yet — see campaign_migration.sql.
+async function saveCampaignRelations(code, platformSlugs, tagNames) {
+  try {
+    if (platformSlugs.length) {
+      const platformIds = platformSlugs.map(s => PLATFORM_ID_BY_SLUG[s]).filter(Boolean);
+      if (platformIds.length) {
+        const { error } = await supabaseClient
+          .from("link_platforms")
+          .insert(platformIds.map(pid => ({ link_code: code, platform_id: pid })));
+        if (error) console.error("Saving link platforms failed:", error);
+      }
+    }
+    if (tagNames.length) {
+      const tagIds = await ensureTagIds(tagNames);
+      if (tagIds.length) {
+        const { error } = await supabaseClient
+          .from("link_tags")
+          .insert(tagIds.map(tid => ({ link_code: code, tag_id: tid })));
+        if (error) console.error("Saving link tags failed:", error);
+      }
+    }
+  } catch (err) {
+    console.error("Failed to save campaign relations:", err);
+  }
+
+  // Update local lookup maps immediately so the new link's icons/tags show
+  // up right away, without waiting on a full re-fetch.
+  if (platformSlugs.length) {
+    linkPlatformsByCode[code] = platformSlugs.map(s => PLATFORM_BY_SLUG[s]).filter(Boolean);
+  }
+  if (tagNames.length) {
+    linkTagsByCode[code] = tagNames.slice();
+    knownTagNames = Array.from(new Set([...knownTagNames, ...tagNames]));
+  }
+}
 
 function flagImg(countryCode, fallbackSeed) {
   const code = (countryCode || flagForCode(fallbackSeed) || "us").toLowerCase();
@@ -649,9 +1594,46 @@ function visitorKey(click) {
   return `${click.visitor_id}__${click.created_at}`;
 }
 
+// "New" vs "Returning" is derived from real click history (any earlier
+// recorded click from the same visitor_id) rather than a fabricated field.
+function visitorStatus(click) {
+  const hasEarlierVisit = clicksLog.some(c =>
+    c.visitor_id === click.visitor_id &&
+    c.id !== click.id &&
+    new Date(c.created_at).getTime() < new Date(click.created_at).getTime()
+  );
+  return hasEarlierVisit ? "Returning" : "New";
+}
+
+// Total number of clicks on record for this visitor (across every link
+// they've opened), derived from actual click history rather than a
+// fabricated counter — mirrors how visitorStatus() derives New/Returning.
+function visitorClickCount(click) {
+  return clicksLog.reduce((n, c) => n + (c.visitor_id === click.visitor_id ? 1 : 0), 0);
+}
+
+// Collapses a list of click events down to one entry per unique visitor —
+// the visitor's most recent click (within the given list) is kept as the
+// representative row, so location/device/etc. reflect their latest visit
+// while visitorClickCount() still reports their true total across every
+// click on record. This is what lets a visitor who has clicked 5 times
+// show up as a single card in the Users listing instead of 5 duplicate
+// cards, while still surfacing their real click count.
+function dedupeByVisitor(list) {
+  const latestByVisitor = new Map();
+  for (const c of list) {
+    const existing = latestByVisitor.get(c.visitor_id);
+    if (!existing || new Date(c.created_at) > new Date(existing.created_at)) {
+      latestByVisitor.set(c.visitor_id, c);
+    }
+  }
+  return Array.from(latestByVisitor.values());
+}
+
 function buildVisitorCard(click, opts = {}) {
   const flag = flagImg(click.country_code, click.visitor_id);
   const place = [click.city, click.country].filter(Boolean).join(", ") || "Unknown location";
+  const clickCount = visitorClickCount(click);
   // navigate mode (dashboard preview): "Details" jumps to the Users page and
   // opens this exact visit there, rather than expanding inline.
   const toggleLabel = opts.navigate
@@ -660,14 +1642,21 @@ function buildVisitorCard(click, opts = {}) {
   const toggleClass = opts.navigate ? "visitor-details-toggle visitor-details-toggle--nav" : "visitor-details-toggle";
 
   return `
-    <div class="visitor-card" data-visitor-key="${escapeHtml(visitorKey(click))}" data-link-code="${escapeHtml(click.link_code)}">
+    <div class="visitor-card" data-visitor-key="${escapeHtml(visitorKey(click))}" data-visitor-id="${escapeHtml(click.visitor_id)}" data-link-code="${escapeHtml(click.link_code)}">
       <div class="visitor-card-top">
         <span class="visitor-flag" style="background-image:url('${flag}')" title="${escapeHtml(click.country || "Unknown")}"></span>
         <div class="visitor-place">
           <span class="visitor-place-main">${escapeHtml(place)}</span>
-          ${opts.showCode ? `<span class="visitor-linkcode">via ${escapeHtml(click.link_code)}</span>` : ""}
+          ${opts.showCode ? (() => {
+            const ownerLink = links.find(l => l.code === click.link_code);
+            const campaignBit = ownerLink && ownerLink.campaign_name ? ` — ${escapeHtml(ownerLink.campaign_name)}` : "";
+            return `<span class="visitor-linkcode">via ${escapeHtml(click.link_code)}${campaignBit}</span>`;
+          })() : ""}
         </div>
-        <button class="${toggleClass}" type="button">${toggleLabel}</button>
+        <div class="visitor-card-actions">
+          <span class="visitor-click-count" title="Total clicks by this visitor">${ICONS.click}${clickCount.toLocaleString()} ${clickCount === 1 ? "click" : "clicks"}</span>
+          <button class="${toggleClass}" type="button">${toggleLabel}</button>
+        </div>
       </div>
       <div class="visitor-detail-grid" hidden>
         <div class="vfield">${glassIcon("Country", "glow-teal", ICONS.country)}<div><label>Country</label><span>${escapeHtml(click.country || "Unknown")}</span></div></div>
@@ -676,7 +1665,14 @@ function buildVisitorCard(click, opts = {}) {
         <div class="vfield">${glassIcon("Browser", "glow-amber", ICONS.browser)}<div><label>Browser</label><span>${escapeHtml(click.browser || "Unknown")}</span></div></div>
         <div class="vfield">${glassIcon("OS", "glow-purple", ICONS.os)}<div><label>OS</label><span>${escapeHtml(click.os || "Unknown")}</span></div></div>
         <div class="vfield">${glassIcon("Click Time", "glow-teal", ICONS.clock)}<div><label>Click Time</label><span>${escapeHtml(formatDate(click.created_at))}</span></div></div>
-        <div class="vfield vfield--wide">${glassIcon("Visitor ID", "glow-amber", ICONS.user)}<div><label>Visitor ID</label><span class="mono">${escapeHtml(click.visitor_id)}</span></div></div>
+        <div class="vfield">${glassIcon("Visitor ID", "glow-amber", ICONS.user)}<div><label>Visitor ID</label><span class="mono">${escapeHtml(click.visitor_id)}</span></div></div>
+        <div class="vfield">${glassIcon("Total Clicks", "glow-teal", ICONS.click)}<div><label>Total Clicks</label><span>${clickCount.toLocaleString()}</span></div></div>
+        ${(() => {
+          const status = visitorStatus(click);
+          const statusClass = status === "Returning" ? "status-returning" : "status-new";
+          const glow = status === "Returning" ? "glow-purple" : "glow-teal";
+          return `<div class="vfield">${glassIcon("Status", glow, ICONS.status)}<div><label>Status</label><span class="status-badge ${statusClass}">${status}</span></div></div>`;
+        })()}
       </div>
     </div>
   `;
@@ -729,7 +1725,8 @@ function buildLinkItem(link, context = "dashboard") {
     return wrap;
   }
 
-  const recentClicks = clicksForCode(link.code).slice(0, 3);
+  const allLinkClicks = clicksForCode(link.code);
+  const recentClicks = allLinkClicks.slice(0, 3);
   const detail = document.createElement("div");
   detail.className = "row-detail";
   detail.hidden = !expandedRows.has(link.code);
@@ -740,7 +1737,7 @@ function buildLinkItem(link, context = "dashboard") {
     detail.innerHTML = `
       <div class="row-detail-head">Recent visitors</div>
       <div class="visitor-cards">${recentClicks.map(c => buildVisitorCard(c, { navigate: true })).join("")}</div>
-      ${clicksForCode(link.code).length > 3 ? `<button class="link-viewall" data-code="${escapeHtml(link.code)}">View all ${clicksForCode(link.code).length} visitors →</button>` : ""}
+      ${allLinkClicks.length > 3 ? `<button class="link-viewall" data-code="${escapeHtml(link.code)}">View all ${allLinkClicks.length} visitors →</button>` : ""}
     `;
     wireVisitorCardNavigation(detail);
     const viewAll = detail.querySelector(".link-viewall");
@@ -753,56 +1750,154 @@ function buildLinkItem(link, context = "dashboard") {
   return wrap;
 }
 
+// Truncates display text to `max` characters, appending an ellipsis when
+// cut. Callers still put the untouched string in a `title` attribute so
+// hovering reveals the full value — this just keeps card layouts from
+// wrapping or stretching to fit long URLs/tags/names.
+function truncateText(str, max) {
+  const s = String(str || "");
+  if (s.length <= max) return s;
+  return s.slice(0, Math.max(0, max - 1)).trimEnd() + "…";
+}
+
+// Shared rule for the compact click/visitor stat displays (List View's
+// .row-clicks and Grid View's .grid-stat): a short value — 0 up through any
+// 2-digit number (0-99) — reads better centered under its label than
+// hugging the left/right edge, while 3+ digit numbers keep their normal
+// alignment. Centralized here so both views can never drift out of sync on
+// the threshold.
+function isShortStat(n) {
+  return String(n ?? 0).length <= 2;
+}
+
 function buildLinkRow(link, context = "dashboard") {
   const row = document.createElement("div");
   row.className = "link-row";
 
   const clickCount = link.clicks || 0;
-  const clicksAlignClass = String(clickCount).length <= 2 ? " clicks-center" : "";
+  const clicksAlignClass = isShortStat(clickCount) ? " clicks-center" : "";
   const linkClicks = clicksForCode(link.code);
+  const visitorCount = linkClicks.length;
   const latest = linkClicks[0];
   const flag = latest ? (latest.country_code || flagForCode(link.code)) : flagForCode(link.code);
   const isOpen = expandedRows.has(link.code);
+  const fullUrl = link.original || "";
+  const createdIso = latest ? latest.created_at : link.created;
+  const createdShort = (() => {
+    const d = new Date(link.created);
+    return isNaN(d) ? "—" : d.toLocaleDateString([], { month: "short", day: "2-digit" });
+  })();
 
   // Dashboard rows keep the inline expand chevron (recent-visitors preview).
   // The All Tracking Links page instead shows a hover-revealed eye icon that
   // jumps straight to the Users page, filtered to this link — there's no
-  // inline expand panel on that page.
+  // inline expand panel on that page. In grid/card mode both are replaced by
+  // the visible "Analytics" action button, which does the same navigation.
   const actionBtnHtml = context === "all"
     ? `<button class="row-eye-btn" aria-label="View visitors for this link" title="View visitors for ${escapeHtml(link.code)}">${ICONS.eye}</button>`
     : `<button class="row-expand-btn ${isOpen ? "open" : ""}" aria-label="Show visitor details" title="Show visitor details">${ICONS.chevron}</button>`;
 
+  const rowPlatforms = linkPlatformsByCode[link.code] || [];
+  const rowTags = linkTagsByCode[link.code] || [];
+  const hasCampaignIcon = rowPlatforms.length > 0;
+
+  // Profile header icon: a selected campaign platform takes visual priority
+  // over the decorative/geo country flag — only one badge occupies this
+  // slot at a time so the header never shows conflicting identity cues.
+  const primaryPlatform = hasCampaignIcon ? PLATFORM_BY_SLUG[rowPlatforms[0].slug] : null;
+  const iconHtml = (hasCampaignIcon && primaryPlatform)
+    ? `<div class="row-icon row-icon--platform" style="background:${primaryPlatform.color}" title="${escapeHtml(primaryPlatform.name)}">${platformIconHtml(primaryPlatform.slug)}</div>`
+    : `<div class="row-icon row-icon--flag" style="background-image:url('${flagImg(flag, link.code)}')" title="${escapeHtml(flag).toUpperCase()}"></div>`;
+
+  // Short (trackable) link — this is what actually gets copied/shared, as
+  // opposed to row-url below which is the long destination it redirects to.
+  const shortUrl = `${BASE_URL}/api/redirect?id=${link.code}`;
+  const profileName = link.code ? String(link.code) : "—";
+
+  // Only render tag chips when tags actually exist — no placeholder mark
+  // for links without a tag, so the meta row just shows nothing there
+  // instead of an empty shaded "—" badge.
+  const tagsHtml = rowTags.length
+    ? rowTags.slice(0, 3).map(t => {
+        const full = String(t);
+        const short = truncateText(full, 5);
+        return `<span class="tag-badge" title="${escapeHtml(full)}">${ICONS.tag}${escapeHtml(short)}</span>`;
+      }).join("")
+    : "";
+
   row.innerHTML = `
-    <div class="row-icon row-icon--flag" style="background-image:url('${flagImg(flag, link.code)}')" title="${escapeHtml(flag).toUpperCase()}"></div>
+    <div class="row-top">
+      ${iconHtml}
+      <div class="row-heading">
+        ${link.campaign_name ? `
+          <div class="row-campaign">
+            ${rowPlatforms.length ? `<span class="row-platform-icons">${rowPlatforms.map(p => platformBadgeHtml(p.slug, "xs")).join("")}</span>` : ""}
+            <span class="row-campaign-name" title="${escapeHtml(link.campaign_name)}">${escapeHtml(truncateText(link.campaign_name, 20))}</span>
+          </div>` : ""}
+        <div class="row-code" title="${escapeHtml(link.code)}">${escapeHtml(link.code)}</div>
+      </div>
+      <div class="row-profile">
+        <div class="row-profile-name" title="${escapeHtml(profileName)}">${escapeHtml(profileName)}</div>
+        <div class="row-profile-url-line">
+          <span class="row-profile-url" title="${escapeHtml(shortUrl)}">${escapeHtml(truncateText(shortUrl, 18))}</span>
+          <button class="row-profile-copy" data-action="copy-profile" aria-label="Copy short link" title="Copy short link">${ICONS.copy}</button>
+        </div>
+      </div>
+      <div class="row-toggle">${actionBtnHtml}</div>
+      <div class="row-menu">
+        <button class="kebab-btn" aria-label="More actions" title="More actions">&#8942;</button>
+        <div class="kebab-menu" hidden>
+          <button data-action="copy">Copy Link</button>
+          <button data-action="visit">Visit Link</button>
+          <button data-action="delete">Delete</button>
+        </div>
+      </div>
+    </div>
     <div class="row-main">
-      <div class="row-code">${escapeHtml(link.code)}</div>
-      <div class="row-url">${escapeHtml(link.original)}</div>
+      <div class="row-url" title="${escapeHtml(fullUrl)}">${escapeHtml(truncateText(fullUrl, 18) || "—")}</div>
       <div class="row-meta">
-        <span class="badge-active"><i></i>Active</span>
-        <span class="row-date">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          ${formatDate(latest ? latest.created_at : link.created)}
-        </span>
-        ${linkClicks.length ? `<span class="row-visitor-count">${linkClicks.length} visitor${linkClicks.length === 1 ? "" : "s"}</span>` : ""}
+        <div class="row-meta-left">
+          <span class="badge-active"><i></i>Active</span>
+          <span class="row-date">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            ${formatDate(createdIso)}
+          </span>
+        </div>
+        <div class="row-meta-right">
+          ${tagsHtml}
+          <button type="button" class="row-visitor-btn" data-action="toggle-visitors" aria-expanded="false" aria-label="Show visitor count" title="Show visitor count">
+            ${ICONS.user}
+            <span class="row-visitor-count" hidden>${visitorCount.toLocaleString()} visitor${visitorCount === 1 ? "" : "s"}</span>
+          </button>
+        </div>
+      </div>
+      <div class="row-stats-mini">
+        <div class="stat-mini"><span class="stat-mini-num">${clickCount.toLocaleString()}</span><span class="stat-mini-label">Clicks</span></div>
+        <div class="stat-mini"><span class="stat-mini-num">${visitorCount.toLocaleString()}</span><span class="stat-mini-label">Visitors</span></div>
+        <div class="stat-mini"><span class="stat-mini-num">${createdShort}</span><span class="stat-mini-label">Created</span></div>
+      </div>
+      <div class="row-actions">
+        <button class="row-action-btn" data-action="copy" title="Copy Link">${ICONS.copy}<span>Copy</span></button>
+        <button class="row-action-btn" data-action="visit" title="Visit Link">${ICONS.external}<span>Visit</span></button>
+        <button class="row-action-btn" data-action="analytics" title="View Analytics">${ICONS.chart}<span>Analytics</span></button>
       </div>
     </div>
     <div class="row-clicks${clicksAlignClass}">
       <span class="clicks-num">${clickCount.toLocaleString()}</span>
       <span class="clicks-label">CLICKS</span>
     </div>
-    ${actionBtnHtml}
-    <div class="row-menu">
-      <button class="kebab-btn" aria-label="More actions" title="More actions">&#8942;</button>
-      <div class="kebab-menu" hidden>
-        <button data-action="copy">Copy Link</button>
-        <button data-action="visit">Visit Link</button>
-        <button data-action="delete">Delete</button>
-      </div>
-    </div>
   `;
 
   const codeEl = row.querySelector(".row-code");
   codeEl.addEventListener("click", () => openLink(link.code));
+
+  // "Analytics" (visible in card/grid mode) always jumps to the Users page
+  // filtered to this link — the same real navigation the eye button already
+  // performs on the All Tracking Links page.
+  const goToAnalytics = (e) => {
+    e.stopPropagation();
+    openUsersView(link.code);
+  };
 
   if (context === "all") {
     const eyeBtn = row.querySelector(".row-eye-btn");
@@ -823,6 +1918,32 @@ function buildLinkRow(link, context = "dashboard") {
     });
   }
 
+  const visitorBtn = row.querySelector(".row-visitor-btn");
+  if (visitorBtn) {
+    visitorBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const countEl = visitorBtn.querySelector(".row-visitor-count");
+      const willShow = countEl.hidden;
+      countEl.hidden = !willShow;
+      visitorBtn.classList.toggle("open", willShow);
+      visitorBtn.setAttribute("aria-expanded", String(willShow));
+    });
+  }
+
+  row.querySelector('.row-action-btn[data-action="copy"]').addEventListener("click", (e) => {
+    e.stopPropagation();
+    copyLinkToClipboard(link.code);
+  });
+  row.querySelector('.row-profile-copy').addEventListener("click", (e) => {
+    e.stopPropagation();
+    copyLinkToClipboard(link.code);
+  });
+  row.querySelector('.row-action-btn[data-action="visit"]').addEventListener("click", (e) => {
+    e.stopPropagation();
+    openLink(link.code);
+  });
+  row.querySelector('.row-action-btn[data-action="analytics"]').addEventListener("click", goToAnalytics);
+
   const kebabBtn = row.querySelector(".kebab-btn");
   const kebabMenu = row.querySelector(".kebab-menu");
   kebabBtn.addEventListener("click", (e) => {
@@ -831,19 +1952,23 @@ function buildLinkRow(link, context = "dashboard") {
     closeAllKebabMenus();
     sortMenu.hidden = true;
     kebabMenu.hidden = !wasHidden;
+    row.classList.toggle("kebab-open", !wasHidden);
   });
   kebabMenu.addEventListener("click", (e) => e.stopPropagation());
 
   kebabMenu.querySelector('[data-action="copy"]').addEventListener("click", () => {
     copyLinkToClipboard(link.code);
     kebabMenu.hidden = true;
+    row.classList.remove("kebab-open");
   });
   kebabMenu.querySelector('[data-action="visit"]').addEventListener("click", () => {
     openLink(link.code);
     kebabMenu.hidden = true;
+    row.classList.remove("kebab-open");
   });
   kebabMenu.querySelector('[data-action="delete"]').addEventListener("click", () => {
     kebabMenu.hidden = true;
+    row.classList.remove("kebab-open");
     deleteLink(link.code);
   });
 
@@ -857,13 +1982,436 @@ function escapeHtml(str) {
 }
 
 // ==========================================
+// 6a1. TRACKING HISTORY — dedicated table-style row
+// ==========================================
+// Kept fully separate from buildLinkRow/buildLinkItem (used by the All
+// Tracking Links page) so this redesign can never affect that page's
+// markup, styling, or behaviour — only the dashboard's Tracking History
+// panel uses these.
+
+// Resolves a 2-letter country code to a display name using the browser's
+// built-in locale data — avoids shipping/maintaining a manual country list.
+function countryDisplayName(code) {
+  const upper = String(code || "").toUpperCase();
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" }).of(upper) || upper;
+  } catch {
+    return upper;
+  }
+}
+
+// Buckets a link's real click timestamps into "clicks per day" for the
+// last `days` days (oldest first) — used for both the sparkline and the
+// trend percentage, so both stay backed by actual click history rather
+// than invented numbers.
+function dailyClickBuckets(clicks, days = 7) {
+  const buckets = new Array(days).fill(0);
+  const now = Date.now();
+  clicks.forEach(c => {
+    const t = new Date(c.created_at).getTime();
+    if (isNaN(t)) return;
+    const dayIndex = days - 1 - Math.floor((now - t) / 86400000);
+    if (dayIndex >= 0 && dayIndex < days) buckets[dayIndex]++;
+  });
+  return buckets;
+}
+
+// Recent-vs-prior half of the bucketed window — a genuine trend derived
+// from real click timestamps (not a fabricated growth figure).
+function trendGrowthPercent(buckets) {
+  const mid = Math.ceil(buckets.length / 2);
+  const prior = buckets.slice(0, mid).reduce((a, b) => a + b, 0);
+  const recent = buckets.slice(mid).reduce((a, b) => a + b, 0);
+  if (prior === 0) return recent > 0 ? 100 : 0;
+  return Math.round(((recent - prior) / prior) * 100);
+}
+
+function sparklineSvg(buckets) {
+  const max = Math.max(1, ...buckets);
+  const w = 60, h = 22;
+  const step = buckets.length > 1 ? w / (buckets.length - 1) : 0;
+  const pts = buckets.map((v, i) => `${(i * step).toFixed(1)},${(h - 2 - (v / max) * (h - 4)).toFixed(1)}`).join(" ");
+  return `<svg class="trend-spark" viewBox="0 0 ${w} ${h}" fill="none" xmlns="http://www.w3.org/2000/svg"><polyline points="${pts}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+function buildHistoryRow(link) {
+  const row = document.createElement("div");
+  row.className = "history-row";
+
+  const clickCount = link.clicks || 0;
+  const linkClicks = clicksForCode(link.code);
+  const visitorCount = linkClicks.length;
+  const latest = linkClicks[0];
+  const flag = latest ? (latest.country_code || flagForCode(link.code)) : flagForCode(link.code);
+  const createdIso = latest ? latest.created_at : link.created;
+  const isOpen = expandedRows.has(link.code);
+
+  const rowPlatforms = linkPlatformsByCode[link.code] || [];
+  const rowTags = linkTagsByCode[link.code] || [];
+  const primaryPlatform = rowPlatforms.length ? PLATFORM_BY_SLUG[rowPlatforms[0].slug] : null;
+  const categoryLabel = primaryPlatform ? primaryPlatform.name : (rowTags[0] || "General");
+  const categoryIcon = primaryPlatform
+    ? `<span class="h-category-dot" style="background:${primaryPlatform.color}">${platformIconHtml(primaryPlatform.slug)}</span>`
+    : ICONS.tag;
+
+  const iconHtml = primaryPlatform
+    ? `<div class="row-icon row-icon--platform" style="background:${primaryPlatform.color}" title="${escapeHtml(primaryPlatform.name)}">${platformIconHtml(primaryPlatform.slug)}</div>`
+    : `<div class="row-icon row-icon--flag" style="background-image:url('${flagImg(flag, link.code)}')" title="${escapeHtml(flag).toUpperCase()}"></div>`;
+
+  const buckets = dailyClickBuckets(linkClicks, 7);
+  const growth = trendGrowthPercent(buckets);
+  const growthClass = growth > 0 ? "up" : growth < 0 ? "down" : "flat";
+  const growthLabel = `${growth > 0 ? "+" : ""}${growth}%`;
+
+  const ctrPct = clickCount > 0 ? Math.min(100, Math.round((visitorCount / clickCount) * 100)) : 0;
+
+  const shortUrl = `${BASE_URL}/api/redirect?id=${link.code}`;
+  const created = formatDate(createdIso);
+  const [createdDate, createdTime] = created.split(" · ");
+  const countryName = countryDisplayName(flag);
+
+  // Title prefers the campaign name; when there isn't one, fall back to the
+  // destination domain rather than repeating the @handle shown just below.
+  const destHost = (() => {
+    try { return new URL(link.original).hostname.replace(/^www\./, ""); }
+    catch { return "Tracked Link"; }
+  })();
+  const titleText = link.campaign_name || destHost;
+
+  row.innerHTML = `
+    <div class="h-details">
+      ${iconHtml}
+      <div class="h-details-text">
+        <div class="h-details-top">
+          <span class="h-code" title="${escapeHtml(link.campaign_name || link.code)}">${escapeHtml(titleText)}</span>
+          ${link.campaign_name ? `<span class="h-badge-featured">Featured</span>` : ""}
+        </div>
+        <div class="h-details-sub">
+          <span class="h-handle" title="${escapeHtml(shortUrl)}">@${escapeHtml(link.code)}</span>
+          <span class="badge-active"><i></i>Active</span>
+        </div>
+      </div>
+    </div>
+    <div class="h-visitors">
+      <span class="h-visitors-num">${visitorCount.toLocaleString()}</span>
+      <span class="h-visitors-growth ${growthClass}">${ICONS.user}${growthLabel}</span>
+    </div>
+    <div class="h-created">
+      <span class="h-created-date">${escapeHtml(createdDate || "—")}</span>
+      <span class="h-created-time">${escapeHtml(createdTime || "")}</span>
+    </div>
+    <div class="h-location" title="${escapeHtml(countryName)}">
+      <img class="h-flag" src="${flagImg(flag, link.code)}" alt="" width="18" height="13">
+      <span class="h-location-name">${escapeHtml(countryName)}</span>
+    </div>
+    <div class="h-category">
+      ${categoryIcon}
+      <span class="h-category-name" title="${escapeHtml(categoryLabel)}">${escapeHtml(truncateText(categoryLabel, 10))}</span>
+    </div>
+    <div class="h-clicks">
+      <span class="h-clicks-num">${clickCount.toLocaleString()}</span>
+      <span class="h-clicks-label">Total Clicks</span>
+    </div>
+    <div class="h-ctr">
+      <div class="ctr-ring" style="--pct:${ctrPct}">
+        <span class="ctr-ring-value">${ctrPct}%</span>
+      </div>
+    </div>
+    <div class="h-trend">
+      ${sparklineSvg(buckets)}
+      <span class="h-trend-growth ${growthClass}">${growthLabel}</span>
+    </div>
+    <div class="h-action">
+      <button class="h-open-btn ${isOpen ? "open" : ""}" aria-label="Show visitor details" title="Show visitor details">${ICONS.arrow}</button>
+      <div class="row-menu">
+        <button class="kebab-btn" aria-label="More actions" title="More actions">&#8942;</button>
+        <div class="kebab-menu" hidden>
+          <button data-action="copy">Copy Link</button>
+          <button data-action="visit">Visit Link</button>
+          <button data-action="delete">Delete</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  row.querySelector(".h-code").addEventListener("click", () => openLink(link.code));
+
+  const openBtn = row.querySelector(".h-open-btn");
+  openBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const wrap = row.parentElement;
+    const detail = wrap.querySelector(".row-detail");
+    const willOpen = detail.hidden;
+    detail.hidden = !willOpen;
+    openBtn.classList.toggle("open", willOpen);
+    if (willOpen) expandedRows.add(link.code); else expandedRows.delete(link.code);
+  });
+
+  const kebabBtn = row.querySelector(".kebab-btn");
+  const kebabMenu = row.querySelector(".kebab-menu");
+  kebabBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const wasHidden = kebabMenu.hidden;
+    closeAllKebabMenus();
+    sortMenu.hidden = true;
+    kebabMenu.hidden = !wasHidden;
+    row.classList.toggle("kebab-open", !wasHidden);
+  });
+  kebabMenu.addEventListener("click", (e) => e.stopPropagation());
+
+  kebabMenu.querySelector('[data-action="copy"]').addEventListener("click", () => {
+    copyLinkToClipboard(link.code);
+    kebabMenu.hidden = true;
+    row.classList.remove("kebab-open");
+  });
+  kebabMenu.querySelector('[data-action="visit"]').addEventListener("click", () => {
+    openLink(link.code);
+    kebabMenu.hidden = true;
+    row.classList.remove("kebab-open");
+  });
+  kebabMenu.querySelector('[data-action="delete"]').addEventListener("click", () => {
+    kebabMenu.hidden = true;
+    row.classList.remove("kebab-open");
+    deleteLink(link.code);
+  });
+
+  return row;
+}
+
+// Wrapper: table row + the same "Recent visitors" expand panel Tracking
+// History already had — behaviour is unchanged, only the row's look is new.
+function buildHistoryItem(link) {
+  const wrap = document.createElement("div");
+  wrap.className = "link-item";
+  wrap.appendChild(buildHistoryRow(link));
+
+  const allLinkClicks = clicksForCode(link.code);
+  const recentClicks = allLinkClicks.slice(0, 3);
+  const detail = document.createElement("div");
+  detail.className = "row-detail";
+  detail.hidden = !expandedRows.has(link.code);
+
+  if (recentClicks.length === 0) {
+    detail.innerHTML = `<div class="row-detail-empty">No visitor activity recorded yet for this link.</div>`;
+  } else {
+    detail.innerHTML = `
+      <div class="row-detail-head">Recent visitors</div>
+      <div class="visitor-cards">${recentClicks.map(c => buildVisitorCard(c, { navigate: true })).join("")}</div>
+      ${allLinkClicks.length > 3 ? `<button class="link-viewall" data-code="${escapeHtml(link.code)}">View all ${allLinkClicks.length} visitors →</button>` : ""}
+    `;
+    wireVisitorCardNavigation(detail);
+    const viewAll = detail.querySelector(".link-viewall");
+    if (viewAll) {
+      viewAll.addEventListener("click", () => openUsersView(link.code));
+    }
+  }
+
+  wrap.appendChild(detail);
+  return wrap;
+}
+
+// ==========================================
+// 6a2. GRID VIEW — independent card builder
+// ==========================================
+// Grid View's cards are intentionally built from their own markup/classes
+// (grid-card, grid-card-*) instead of reusing List View's .link-row —
+// this keeps the two views fully independent, so refining one can never
+// regress the other.
+
+// Opens the destination URL directly — no click logging, no redirect hop.
+// Distinct from openLink(), which is the tracked "Visit" action.
+function openOriginalLink(originalUrl) {
+  let destination = String(originalUrl || "").trim();
+  if (!destination) return;
+  if (!/^https?:\/\//i.test(destination)) destination = "https://" + destination;
+  window.open(destination, "_blank");
+}
+
+// Friendly fallback label for the card header when a link has no campaign
+// name — the destination's bare hostname reads far better than a raw
+// short code, which Grid View never displays.
+function hostnameLabel(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return "Untitled Link";
+  try {
+    const withScheme = /^https?:\/\//i.test(raw) ? raw : "https://" + raw;
+    return new URL(withScheme).hostname.replace(/^www\./, "") || "Untitled Link";
+  } catch {
+    return "Untitled Link";
+  }
+}
+
+function closeAllGridKebabMenus() {
+  document.querySelectorAll(".grid-kebab-menu").forEach(m => m.hidden = true);
+  document.querySelectorAll(".grid-card.kebab-open").forEach(el => el.classList.remove("kebab-open"));
+}
+
+function buildGridCard(link, context = "dashboard") {
+  const card = document.createElement("div");
+  card.className = "grid-card";
+
+  const clickCount = link.clicks || 0;
+  const linkClicks = clicksForCode(link.code);
+  const visitorCount = linkClicks.length;
+  const latest = linkClicks[0];
+  const flag = latest ? (latest.country_code || flagForCode(link.code)) : flagForCode(link.code);
+  const createdIso = latest ? latest.created_at : link.created;
+  const createdShort = (() => {
+    const d = new Date(link.created);
+    return isNaN(d) ? "—" : d.toLocaleDateString([], { month: "short", day: "2-digit" });
+  })();
+
+  const cardPlatforms = linkPlatformsByCode[link.code] || [];
+  const cardTags = linkTagsByCode[link.code] || [];
+  const hasCampaignIcon = cardPlatforms.length > 0;
+  const primaryPlatform = hasCampaignIcon ? PLATFORM_BY_SLUG[cardPlatforms[0].slug] : null;
+
+  const iconHtml = (hasCampaignIcon && primaryPlatform)
+    ? `<div class="grid-card-icon grid-card-icon--platform" style="background:${primaryPlatform.color}" title="${escapeHtml(primaryPlatform.name)}">${platformIconHtml(primaryPlatform.slug)}</div>`
+    : `<div class="grid-card-icon grid-card-icon--flag" style="background-image:url('${flagImg(flag, link.code)}')" title="${escapeHtml(flag).toUpperCase()}"></div>`;
+
+  // Short (trackable) link shown under the name — this is what Copy
+  // actually copies, as opposed to the original destination.
+  const shortUrl = `${BASE_URL}/api/redirect?id=${link.code}`;
+
+  // Card header identity: campaign name when set, otherwise the
+  // destination's hostname — never the raw short code.
+  const displayName = link.campaign_name ? link.campaign_name : hostnameLabel(link.original);
+
+  // Only one primary tag badge is ever shown on the card face — additional
+  // tags collapse into a "+N" suffix on that same badge, with the full
+  // list available via the title tooltip on hover.
+  const tagsHtml = cardTags.length
+    ? (() => {
+        const primary = escapeHtml(truncateText(String(cardTags[0]), 12));
+        const extra = cardTags.length - 1;
+        const allTitle = escapeHtml(cardTags.join(", "));
+        return `<span class="tag-badge grid-card-tag" title="${allTitle}">${ICONS.tag}${primary}${extra > 0 ? ` +${extra}` : ""}</span>`;
+      })()
+    : "";
+
+  // Short (1-2 digit) counts look off-balance left-aligned in their stat
+  // column — this mirrors the old List View "clicks-center" rule so a
+  // small number like "3" or "42" sits centered under its label instead
+  // of hugging the left edge. Longer numbers, and the Created date stat,
+  // are unaffected and keep their normal left alignment.
+  const clicksCenterClass = isShortStat(clickCount) ? " grid-stat--center" : "";
+  const visitorsCenterClass = isShortStat(visitorCount) ? " grid-stat--center" : "";
+
+  card.innerHTML = `
+    <div class="grid-card-header">
+      ${iconHtml}
+      <div class="grid-card-heading">
+        <div class="grid-card-name" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</div>
+        <div class="grid-card-url-line">
+          <span class="grid-card-url" title="${escapeHtml(shortUrl)}">${escapeHtml(truncateText(shortUrl, 15))}</span>
+          <button class="grid-card-copy" data-action="copy-short" aria-label="Copy short link" title="Copy short link">${ICONS.copy}</button>
+        </div>
+      </div>
+      <div class="grid-card-menu">
+        <button class="grid-kebab-btn" aria-label="More actions" title="More actions">&#8942;</button>
+        <div class="grid-kebab-menu" hidden>
+          <button data-action="copy-short">Copy Short Link</button>
+          <button data-action="open-og">Open Original Link (OG)</button>
+          <button data-action="analytics">Analytics</button>
+          <button data-action="delete">Delete</button>
+        </div>
+      </div>
+    </div>
+    <div class="grid-card-meta">
+      <span class="badge-active"><i></i>Active</span>
+      <span class="grid-card-date">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        ${formatDate(createdIso)}
+      </span>
+    </div>
+    <div class="grid-card-tag-row">${tagsHtml}</div>
+    <div class="grid-card-stats">
+      <div class="grid-stat${clicksCenterClass}"><span class="grid-stat-num">${clickCount.toLocaleString()}</span><span class="grid-stat-label">Clicks</span></div>
+      <div class="grid-stat${visitorsCenterClass}"><span class="grid-stat-num">${visitorCount.toLocaleString()}</span><span class="grid-stat-label">Visitors</span></div>
+      <div class="grid-stat"><span class="grid-stat-num">${createdShort}</span><span class="grid-stat-label">Created</span></div>
+    </div>
+    <div class="grid-card-actions">
+      <button class="grid-action-btn" data-action="copy-short" title="Copy Short Link">${ICONS.copy}<span>Copy</span></button>
+      <button class="grid-action-btn" data-action="visit" title="Visit Link">${ICONS.external}<span>Visit</span></button>
+      <button class="grid-action-btn" data-action="analytics" title="View Analytics">${ICONS.chart}<span>Analytics</span></button>
+    </div>
+  `;
+
+  card.querySelectorAll('[data-action="copy-short"]').forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      copyLinkToClipboard(link.code);
+    });
+  });
+
+  card.querySelector('.grid-action-btn[data-action="visit"]').addEventListener("click", (e) => {
+    e.stopPropagation();
+    openLink(link.code);
+  });
+
+  const goToAnalytics = (e) => {
+    e.stopPropagation();
+    openUsersView(link.code);
+  };
+  card.querySelector('.grid-action-btn[data-action="analytics"]').addEventListener("click", goToAnalytics);
+
+  const kebabBtn = card.querySelector(".grid-kebab-btn");
+  const kebabMenu = card.querySelector(".grid-kebab-menu");
+  kebabBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const wasHidden = kebabMenu.hidden;
+    closeAllGridKebabMenus();
+    closeAllFilterMenus();
+    sortMenu.hidden = true;
+    kebabMenu.hidden = !wasHidden;
+    card.classList.toggle("kebab-open", !wasHidden);
+  });
+  kebabMenu.addEventListener("click", (e) => e.stopPropagation());
+
+  kebabMenu.querySelector('[data-action="copy-short"]').addEventListener("click", () => {
+    copyLinkToClipboard(link.code);
+    kebabMenu.hidden = true;
+    card.classList.remove("kebab-open");
+  });
+  kebabMenu.querySelector('[data-action="open-og"]').addEventListener("click", () => {
+    openOriginalLink(link.original);
+    kebabMenu.hidden = true;
+    card.classList.remove("kebab-open");
+  });
+  kebabMenu.querySelector('[data-action="analytics"]').addEventListener("click", () => {
+    kebabMenu.hidden = true;
+    card.classList.remove("kebab-open");
+    openUsersView(link.code);
+  });
+  kebabMenu.querySelector('[data-action="delete"]').addEventListener("click", () => {
+    kebabMenu.hidden = true;
+    card.classList.remove("kebab-open");
+    deleteLink(link.code);
+  });
+
+  return card;
+}
+
+// ==========================================
 // 6b. ALL USER LISTINGS (flattened visitor feed)
 // ==========================================
 function renderAllUsers() {
   let list = clicksLog.slice();
 
+  if (usersTypeFilter !== "all") {
+    list = list.filter(c => {
+      const ownerLink = links.find(l => l.code === c.link_code);
+      return ownerLink ? linkMatchesType(ownerLink, usersTypeFilter) : false;
+    });
+  }
+
   if (usersLinkFilterMode !== "all") {
     list = list.filter(c => c.link_code === usersLinkFilterMode);
+  }
+
+  if (usersSelectedTags.size) {
+    list = list.filter(c => (linkTagsByCode[c.link_code] || []).some(t => usersSelectedTags.has(t)));
   }
 
   if (userSearchTerm) {
@@ -874,6 +2422,11 @@ function renderAllUsers() {
       (c.link_code || "").toLowerCase().includes(userSearchTerm)
     );
   }
+
+  // A visitor who clicked several times still only gets one row here — all
+  // their clicks are counted (via visitorClickCount inside buildVisitorCard)
+  // but they're noted once, not once per click.
+  list = dedupeByVisitor(list);
 
   switch (userSortMode) {
     case "oldest":
@@ -888,29 +2441,52 @@ function renderAllUsers() {
       break;
   }
 
+  const anyFilterActive = !!userSearchTerm || usersTypeFilter !== "all" || usersLinkFilterMode !== "all" || usersSelectedTags.size > 0;
   const scopeLabel = usersLinkFilterMode === "all" ? "All Users" : `Users · ${usersLinkFilterMode}`;
-  const scopeTotal = usersLinkFilterMode === "all" ? clicksLog.length : clicksForCode(usersLinkFilterMode).length;
-  usersFilterPill.textContent = `${scopeLabel} · ${scopeTotal}`;
-  allUsersBody.innerHTML = "";
+  const scopeTotal = dedupeByVisitor(usersLinkFilterMode === "all" ? clicksLog : clicksForCode(usersLinkFilterMode)).length;
+  usersFilterPill.textContent = anyFilterActive
+    ? `${scopeLabel} · ${list.length.toLocaleString()} of ${scopeTotal.toLocaleString()}`
+    : `${scopeLabel} · ${scopeTotal.toLocaleString()}`;
 
   if (list.length === 0) {
-    const emptyMsg = userSearchTerm
-      ? "No visitors match your search."
-      : usersLinkFilterMode !== "all"
-        ? "No visitor activity recorded yet for this link."
-        : "No visitor activity recorded yet. Once someone opens one of your links, they'll show up here.";
+    allUsersBody.innerHTML = "";
+    const emptyMsg = anyFilterActive
+      ? "No visitors match your filters."
+      : "No visitor activity recorded yet. Once someone opens one of your links, they'll show up here.";
     allUsersBody.innerHTML = `<div class="empty-state"><span class="icon">&#128100;</span><span>${emptyMsg}</span></div>`;
+    document.getElementById("users-pagination").innerHTML = "";
+    usersExportSnapshot = { rows: [], filterLabel: usersFilterPill.textContent };
     return;
   }
 
-  allUsersBody.innerHTML = list.map(c => buildVisitorCard(c, { showCode: usersLinkFilterMode === "all" })).join("");
+  // If we're jumping here to highlight one specific visit, make sure the
+  // page we render actually contains it (instead of always defaulting to
+  // page 1 and the card never appearing).
+  if (pendingVisitorHighlight) {
+    const idx = list.findIndex(c => c.visitor_id === pendingVisitorHighlight.visitorId);
+    if (idx !== -1) usersPage = Math.floor(idx / usersPageSize) + 1;
+  }
+
+  const { pageItems, safePage } = paginate(list, usersPage, usersPageSize);
+  usersPage = safePage;
+
+  usersExportSnapshot = { rows: pageItems, filterLabel: usersFilterPill.textContent };
+
+  allUsersBody.innerHTML = pageItems.map(c => buildVisitorCard(c, { showCode: usersLinkFilterMode === "all" })).join("");
   wireVisitorCardToggles(allUsersBody);
+
+  renderPagination(document.getElementById("users-pagination"), {
+    page: usersPage,
+    pageSize: usersPageSize,
+    total: list.length,
+    onPageChange: (p) => { usersPage = p; renderAllUsers(); document.getElementById("all-users-body").scrollIntoView({ behavior: "smooth", block: "start" }); },
+    onPageSizeChange: (size) => { usersPageSize = size; usersPage = 1; renderAllUsers(); }
+  });
 
   // If we arrived here via a dashboard "Details" click on one specific
   // visit, open that exact card and scroll it into view.
   if (pendingVisitorHighlight) {
-    const key = `${pendingVisitorHighlight.visitorId}__${pendingVisitorHighlight.createdAt}`;
-    const target = allUsersBody.querySelector(`.visitor-card[data-visitor-key="${CSS.escape(key)}"]`);
+    const target = allUsersBody.querySelector(`.visitor-card[data-visitor-id="${CSS.escape(pendingVisitorHighlight.visitorId)}"]`);
     if (target) {
       const grid = target.querySelector(".visitor-detail-grid");
       const btn = target.querySelector(".visitor-details-toggle");
@@ -923,6 +2499,446 @@ function renderAllUsers() {
     }
     pendingVisitorHighlight = null;
   }
+}
+
+// ==========================================
+// 6b. EXPORT (PDF / EXCEL) — All Tracking Links & All User Listings
+// ==========================================
+// Both exports work off the snapshot captured by the most recent render, so
+// what gets exported always matches exactly what's on screen — i.e. the
+// current page of results after any active search/filters/sort, not the
+// full unfiltered dataset.
+
+function exportFilenameStub(prefix, filterLabel, page) {
+  const clean = String(filterLabel || "")
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  const date = new Date().toISOString().slice(0, 10);
+  return `${prefix}${clean ? "-" + clean : ""}-page${page}-${date}`;
+}
+
+function exportLinksRows() {
+  return linksExportSnapshot.rows.map((link, idx) => ({
+    "S.No": idx + 1,
+    "Short Code": link.code || "",
+    "Short URL": `${BASE_URL}/api/redirect?id=${link.code}`,
+    "Destination URL": link.original || "",
+    "Campaign": link.campaign_name || "—",
+    "Tags": linkTagsSorted(link.code).join(", ") || "—",
+    "Clicks": link.clicks || 0,
+    "Created": formatDate(link.created)
+  }));
+}
+
+function exportUsersRows() {
+  // Column order is priority-based: link identity first (name/short/original
+  // URL), then who the visitor is, then the click analysis fields last.
+  return usersExportSnapshot.rows.map((click, idx) => {
+    const ownerLink = links.find(l => l.code === click.link_code);
+    return {
+      "S.No": idx + 1,
+      "Link Name": click.link_code || "",
+      "Short URL": `${BASE_URL}/api/redirect?id=${click.link_code}`,
+      "Original URL": ownerLink ? (ownerLink.original || "") : "",
+      "Visitor ID": click.visitor_id || "",
+      "Country": click.country || "Unknown",
+      "City": click.city || "Unknown",
+      "Device": click.device || "Unknown",
+      "Browser": click.browser || "Unknown",
+      "OS": click.os || "Unknown",
+      "Status": visitorStatus(click),
+      "Click Time": formatDate(click.created_at)
+    };
+  });
+}
+
+// ---- Column width helpers for Excel exports ----
+// The xlsx library never auto-sizes columns, so every sheet used to ship
+// at Excel's default ~8.43-char width regardless of content — long URLs,
+// tags, and names all got clipped/misaligned on open. These compute a
+// width per column from the actual header + cell content instead.
+function autoFitColumns(rows, minWidth = 6, maxWidth = 60) {
+  if (!rows.length) return [];
+  const headers = Object.keys(rows[0]);
+  return headers.map((key) => {
+    let longest = String(key).length;
+    for (const row of rows) {
+      const val = row[key];
+      const len = val === null || val === undefined ? 0 : String(val).length;
+      if (len > longest) longest = len;
+    }
+    return { wch: Math.min(Math.max(longest + 2, minWidth), maxWidth) };
+  });
+}
+
+function autoFitAOAColumns(aoa, minWidths = [], maxWidth = 60) {
+  const colCount = aoa.reduce((max, row) => Math.max(max, row.length), 0);
+  const widths = [];
+  for (let c = 0; c < colCount; c++) {
+    let longest = minWidths[c] || 6;
+    for (const row of aoa) {
+      const val = row[c];
+      if (val === null || val === undefined) continue;
+      const len = String(val).length;
+      if (len > longest) longest = len;
+    }
+    widths.push({ wch: Math.min(longest + 2, maxWidth) });
+  }
+  return widths;
+}
+
+// ---- Premium styling for Excel exports ----
+// Colors mirror the app's own dark/teal brand (see style.css --bg-deep-alt,
+// --teal) so exported sheets read as part of the product, not a generic
+// spreadsheet. Requires xlsx-js-style (see index.html) — the plain "xlsx"
+// package accepts these same `.s` objects but silently drops them on save.
+const XL_THEME = {
+  headerFill: "1B2140",   // deep navy, matches --bg-deep-alt
+  headerFont: "FFFFFF",
+  accent: "2DD4BF",       // matches --teal
+  zebraFill: "F4F6FB",
+  labelFill: "EEF1FA",
+  border: "D7DCE5",
+  muted: "6B7280"
+};
+
+function xlBorder(color = XL_THEME.border) {
+  const b = { style: "thin", color: { rgb: color } };
+  return { top: b, bottom: b, left: b, right: b };
+}
+
+// Bold white-on-navy header band across a row range (used for both the
+// per-page table header and each visitor sub-table header in the full report).
+function styleHeaderRow(ws, range) {
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const addr = XLSX.utils.encode_cell({ r: range.s.r, c });
+    if (!ws[addr]) ws[addr] = { t: "s", v: "" };
+    ws[addr].s = {
+      font: { bold: true, sz: 11, color: { rgb: XL_THEME.headerFont } },
+      fill: { patternType: "solid", fgColor: { rgb: XL_THEME.headerFill } },
+      alignment: { horizontal: "center", vertical: "center" },
+      border: xlBorder()
+    };
+  }
+}
+
+// Bordered body rows with light zebra banding; numeric columns right-align
+// (matching Excel's own number convention) so header + data agree visually.
+function styleDataRows(ws, range, { rightAlignCols = [] } = {}) {
+  for (let r = range.s.r + 1; r <= range.e.r; r++) {
+    const zebra = (r - range.s.r) % 2 === 0;
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      if (!ws[addr]) continue;
+      const style = {
+        font: { sz: 10.5 },
+        alignment: { horizontal: rightAlignCols.includes(c) ? "right" : "left", vertical: "center" },
+        border: xlBorder()
+      };
+      if (zebra) style.fill = { patternType: "solid", fgColor: { rgb: XL_THEME.zebraFill } };
+      ws[addr].s = style;
+    }
+  }
+}
+
+// Teal section-banner row (used to open each link's block in the full report).
+function styleSectionBanner(ws, r, colCount) {
+  for (let c = 0; c < colCount; c++) {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    if (!ws[addr]) ws[addr] = { t: "s", v: "" };
+    ws[addr].s = {
+      font: { bold: true, sz: 11, color: { rgb: XL_THEME.headerFont } },
+      fill: { patternType: "solid", fgColor: { rgb: XL_THEME.accent } },
+      alignment: { horizontal: "left", vertical: "center" },
+      border: xlBorder()
+    };
+  }
+  if (!ws["!rows"]) ws["!rows"] = [];
+  ws["!rows"][r] = { hpx: 20 };
+}
+
+// Label/value metadata row (e.g. "Destination" | <url>) — bold shaded label
+// cell so it reads as a mini key/value table rather than plain text.
+function styleMetaRow(ws, r) {
+  const labelAddr = XLSX.utils.encode_cell({ r, c: 0 });
+  const valueAddr = XLSX.utils.encode_cell({ r, c: 1 });
+  if (ws[labelAddr]) {
+    ws[labelAddr].s = {
+      font: { bold: true, sz: 10, color: { rgb: XL_THEME.headerFill } },
+      fill: { patternType: "solid", fgColor: { rgb: XL_THEME.labelFill } },
+      alignment: { horizontal: "left", vertical: "center" },
+      border: xlBorder()
+    };
+  }
+  if (ws[valueAddr]) {
+    ws[valueAddr].s = {
+      font: { sz: 10.5 },
+      alignment: { horizontal: "left", vertical: "center" },
+      border: xlBorder()
+    };
+  }
+}
+
+function exportToPDF(title, rows, filenameStub) {
+  if (!rows.length) { showToast("No rows on this page to export."); return; }
+  if (!window.jspdf || !window.jspdf.jsPDF) { showToast("PDF export isn't available right now."); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: "landscape" });
+  const headers = [Object.keys(rows[0])];
+  const body = rows.map(r => Object.values(r));
+
+  doc.setFontSize(14);
+  doc.text(title, 14, 15);
+  doc.autoTable({
+    head: headers,
+    body,
+    startY: 20,
+    styles: { fontSize: 8, cellPadding: 2.5 },
+    headStyles: { fillColor: [40, 40, 60] },
+    columnStyles: { 0: { cellWidth: 12 } },
+    margin: { left: 14, right: 14 }
+  });
+
+  doc.save(`${filenameStub}.pdf`);
+}
+
+function exportToExcel(sheetName, rows, filenameStub) {
+  if (!rows.length) { showToast("No rows on this page to export."); return; }
+  if (!window.XLSX) { showToast("Excel export isn't available right now."); return; }
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws["!cols"] = autoFitColumns(rows);
+  // Autofilter + a frozen header row so the "S.No" / column titles stay
+  // visible and sortable once the sheet has more rows than fit on screen.
+  ws["!autofilter"] = { ref: ws["!ref"] };
+  ws["!views"] = [{ state: "frozen", ySplit: 1 }];
+  ws["!rows"] = [{ hpx: 22 }];
+
+  const range = XLSX.utils.decode_range(ws["!ref"]);
+  const headerKeys = Object.keys(rows[0]);
+  const numericCols = headerKeys
+    .map((key, i) => (typeof rows[0][key] === "number" ? i : -1))
+    .filter((i) => i !== -1);
+  styleHeaderRow(ws, range);
+  styleDataRows(ws, range, { rightAlignCols: numericCols });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, `${filenameStub}.xlsx`);
+}
+
+// ---- "Export All" — a complete report: every link, each followed by its
+// full visitor list, laid out as clearly separated sections (not one giant
+// mixed table). Unlike the per-page exports above, this always covers every
+// link regardless of the current page/filter, since the point of "All" is
+// a full backup-style report rather than a snapshot of what's on screen. ----
+
+function linkTagsSorted(code) {
+  return (linkTagsByCode[code] || []).slice().sort((a, b) => a.localeCompare(b));
+}
+
+function exportFullReportPDF() {
+  if (!links.length) { showToast("No links to export."); return; }
+  if (!window.jspdf || !window.jspdf.jsPDF) { showToast("PDF export isn't available right now."); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: "landscape" });
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginX = 14;
+  let y = 18;
+
+  doc.setFontSize(16);
+  doc.text("Complete Link & Visitor Report", marginX, y);
+  y += 6;
+  doc.setFontSize(9);
+  doc.setTextColor(130);
+  doc.text(`Generated ${formatDate(new Date().toISOString())} · ${links.length.toLocaleString()} link${links.length === 1 ? "" : "s"}`, marginX, y);
+  doc.setTextColor(0);
+  y += 9;
+
+  const sortedLinks = links.slice().sort((a, b) => new Date(b.created) - new Date(a.created));
+
+  sortedLinks.forEach((link, idx) => {
+    const linkClicks = clicksForCode(link.code);
+
+    // Leave room for at least the section header + detail table before
+    // deciding a fresh page reads better than splitting them apart.
+    if (y > pageHeight - 45) {
+      doc.addPage();
+      y = 18;
+    }
+
+    doc.setFontSize(11.5);
+    doc.setFont("helvetica", "bold");
+    doc.text(`${idx + 1}. ${link.code}`, marginX, y);
+    doc.setFont("helvetica", "normal");
+    y += 5;
+
+    doc.autoTable({
+      startY: y,
+      margin: { left: marginX, right: marginX },
+      theme: "plain",
+      styles: { fontSize: 8, cellPadding: { top: 1.6, bottom: 1.6, left: 2, right: 2 } },
+      columnStyles: { 0: { fontStyle: "bold", cellWidth: 26, textColor: [90, 90, 110] } },
+      body: [
+        ["Short URL", `${BASE_URL}/api/redirect?id=${link.code}`],
+        ["Destination", link.original || ""],
+        ["Campaign", link.campaign_name || "—"],
+        ["Tags", linkTagsSorted(link.code).join(", ") || "—"],
+        ["Clicks", String(link.clicks || 0)],
+        ["Created", formatDate(link.created)]
+      ]
+    });
+    y = doc.lastAutoTable.finalY + 3;
+
+    if (linkClicks.length === 0) {
+      doc.setFontSize(8.5);
+      doc.setTextColor(140);
+      doc.text("No visitor activity recorded for this link.", marginX, y + 3);
+      doc.setTextColor(0);
+      y += 12;
+    } else {
+      doc.autoTable({
+        startY: y,
+        margin: { left: marginX, right: marginX },
+        head: [["S.No", "Visitor ID", "Country", "City", "Device", "Browser", "OS", "Status", "Click Time"]],
+        body: linkClicks.map((c, i) => [
+          i + 1,
+          c.visitor_id || "",
+          c.country || "Unknown",
+          c.city || "Unknown",
+          c.device || "Unknown",
+          c.browser || "Unknown",
+          c.os || "Unknown",
+          visitorStatus(c),
+          formatDate(c.created_at)
+        ]),
+        styles: { fontSize: 7.5, cellPadding: 2 },
+        headStyles: { fillColor: [40, 40, 60] },
+        columnStyles: { 0: { cellWidth: 12 } }
+      });
+      y = doc.lastAutoTable.finalY + 11; // extra breathing room before the next link's section
+    }
+  });
+
+  doc.save(`complete-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+}
+
+function exportFullReportExcel() {
+  if (!links.length) { showToast("No links to export."); return; }
+  if (!window.XLSX) { showToast("Excel export isn't available right now."); return; }
+
+  const VISITOR_COLS = 9; // S.No, Visitor ID, Country, City, Device, Browser, OS, Status, Click Time
+  const sortedLinks = links.slice().sort((a, b) => new Date(b.created) - new Date(a.created));
+
+  const aoa = [];
+  const sectionBannerRows = []; // row indices to merge + style as a section banner
+  const metaRows = [];          // row indices of label/value metadata rows
+  const subHeaderRows = [];     // row indices of each visitor sub-table header
+
+  aoa.push(["Complete Link & Visitor Report"]);
+  aoa.push([`Generated ${formatDate(new Date().toISOString())}`, `${sortedLinks.length} link(s)`]);
+  aoa.push([]);
+
+  sortedLinks.forEach((link, idx) => {
+    const linkClicks = clicksForCode(link.code);
+
+    sectionBannerRows.push(aoa.length);
+    aoa.push([`${idx + 1}. ${link.code}`]);
+
+    [
+      ["Short URL", `${BASE_URL}/api/redirect?id=${link.code}`],
+      ["Destination", link.original || ""],
+      ["Campaign", link.campaign_name || "—"],
+      ["Tags", linkTagsSorted(link.code).join(", ") || "—"],
+      ["Clicks", link.clicks || 0],
+      ["Created", formatDate(link.created)]
+    ].forEach((row) => { metaRows.push(aoa.length); aoa.push(row); });
+
+    aoa.push([]);
+
+    // The visitor sub-table header is always shown now, even with zero
+    // clicks, so every link's section has the same 9-column shape instead
+    // of some sections silently losing their columns.
+    subHeaderRows.push(aoa.length);
+    aoa.push(["S.No", "Visitor ID", "Country", "City", "Device", "Browser", "OS", "Status", "Click Time"]);
+
+    if (linkClicks.length === 0) {
+      aoa.push(["—", "No visitor activity recorded for this link."]);
+    } else {
+      linkClicks.forEach((c, i) => {
+        aoa.push([
+          i + 1,
+          c.visitor_id || "",
+          c.country || "Unknown",
+          c.city || "Unknown",
+          c.device || "Unknown",
+          c.browser || "Unknown",
+          c.os || "Unknown",
+          visitorStatus(c),
+          formatDate(c.created_at)
+        ]);
+      });
+    }
+    aoa.push([]); // single spacer row between link sections
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  // This sheet mixes three shapes in the same columns: a 1-column section
+  // banner, a 2-column label/value block per link, and a 9-column visitor
+  // sub-table. Widths are computed from actual content (banner/title rows
+  // excluded — they're meant to span the row, not force column A wide).
+  ws["!cols"] = autoFitAOAColumns(aoa.slice(3), [8]);
+
+  ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: VISITOR_COLS - 1 } }];
+
+  // Title banner (styled first, then given extra height + larger font so it
+  // reads as the report's main title rather than just another section banner)
+  styleSectionBanner(ws, 0, VISITOR_COLS);
+  ws["!rows"][0] = { hpx: 28 };
+  ws[XLSX.utils.encode_cell({ r: 0, c: 0 })].s.font.sz = 15;
+  // Subtitle (generated date / link count) — quiet, not banded
+  ["A2", "B2"].forEach((addr) => {
+    if (ws[addr]) ws[addr].s = { font: { italic: true, sz: 10, color: { rgb: XL_THEME.muted } } };
+  });
+
+  sectionBannerRows.forEach((r) => {
+    ws["!merges"].push({ s: { r, c: 0 }, e: { r, c: VISITOR_COLS - 1 } });
+    styleSectionBanner(ws, r, VISITOR_COLS);
+  });
+  metaRows.forEach((r) => styleMetaRow(ws, r));
+  subHeaderRows.forEach((r) => {
+    styleHeaderRow(ws, { s: { r, c: 0 }, e: { r, c: VISITOR_COLS - 1 } });
+    // Style that link's visitor data rows (or its "no activity" row) right
+    // after its header, up to the next blank spacer row.
+    let dataEnd = r + 1;
+    while (aoa[dataEnd] && aoa[dataEnd].length > 0) dataEnd++;
+    if (dataEnd > r + 1) {
+      styleDataRows(ws, { s: { r, c: 0 }, e: { r: dataEnd - 1, c: VISITOR_COLS - 1 } }, { rightAlignCols: [0] });
+    }
+  });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Full Report");
+  XLSX.writeFile(wb, `complete-report-${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+function exportLinks(format) {
+  if (format === "all-pdf") { exportFullReportPDF(); return; }
+  if (format === "all-excel") { exportFullReportExcel(); return; }
+  const rows = exportLinksRows();
+  const stub = exportFilenameStub("tracking-links", linksExportSnapshot.filterLabel, linksPage);
+  if (format === "pdf") exportToPDF("All Tracking Links", rows, stub);
+  else exportToExcel("Tracking Links", rows, stub);
+}
+
+function exportUsers(format) {
+  const rows = exportUsersRows();
+  const stub = exportFilenameStub("user-listings", usersExportSnapshot.filterLabel, usersPage);
+  if (format === "pdf") exportToPDF("All User Listings", rows, stub);
+  else exportToExcel("User Listings", rows, stub);
 }
 
 // ==========================================
@@ -940,8 +2956,23 @@ function displayReceipt(link) {
   document.getElementById("copy-btn").onclick = () => copyLinkToClipboard(link.code);
   document.getElementById("open-btn").onclick = () => openLink(link.code);
 
+  const platforms = linkPlatformsByCode[link.code] || [];
+  const tags = linkTagsByCode[link.code] || [];
+  const previewCampaign = document.getElementById("preview-campaign");
+  if (link.campaign_name) {
+    previewCampaign.hidden = false;
+    document.getElementById("gen-campaign-icons").innerHTML = platforms
+      .map(p => platformBadgeHtml(p.slug))
+      .join("");
+    document.getElementById("gen-campaign-name").textContent = link.campaign_name;
+    document.getElementById("gen-campaign-tags").innerHTML = tags.map(t => tagBadgeHtml(t)).join("");
+  } else {
+    previewCampaign.hidden = true;
+  }
+
   previewPlaceholder.hidden = true;
   previewCreated.hidden = false;
+  previewCreated.dataset.hasContent = "true";
 }
 
 // ==========================================

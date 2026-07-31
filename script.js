@@ -134,6 +134,8 @@ const usersLinkFilterLabel = document.getElementById("users-link-filter-label");
 const usersLinkFilterMenu = document.getElementById("users-link-filter-menu");
 const usersExportBtn = document.getElementById("users-export-btn");
 const usersExportMenu = document.getElementById("users-export-menu");
+const usersMergeBtn = document.getElementById("users-merge-btn");
+const usersMergeLabel = document.getElementById("users-merge-label");
 
 // DOM Elements — new filter system (Choose Type / Link Name / Tag Filter)
 const linksTypeBtn = document.getElementById("links-type-btn");
@@ -565,6 +567,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  usersMergeBtn.addEventListener("click", handleMergeDuplicates);
+
   // ---- All Tracking Links: Choose Type + Link Name + Tag Filter ----
   setupTypeFilter({
     btn: linksTypeBtn, label: linksTypeLabel, menu: linksTypeMenu,
@@ -926,32 +930,51 @@ async function saveLink(link) {
   return data;
 }
 
+// "Visit" action — opens the link the same way a real visitor would: through
+// the tracked /api/redirect endpoint, not the raw destination URL.
+//
+// This used to open link.original directly and bump links.clicks by hand
+// from the browser. That duplicated (and diverged from) the tracking that
+// api/redirect.js already does for every real click: it inflated the
+// "clicks" number on the links table without ever inserting a row into the
+// "clicks" table, so this click had no visitor_id, device, or geo data and
+// never showed up on the Users page or in a link's visitor list. That gap
+// is exactly what made "clicks" and "users" stop matching up — every
+// dashboard "visit" counted as a click but not as a user.
+//
+// Routing through /api/redirect makes this click go through the *one*
+// place clicks are recorded, so it's logged as a real, deduped visit —
+// consistent with every other click on the link.
+// Guards openLink() against a genuine double-fire: a fast double-tap/
+// double-click, or a touch event and its synthetic mouse "click" both
+// landing, can call openLink() twice for what the person experienced as
+// one interaction. This is different from two deliberate, separate clicks
+// (which SHOULD both count — that's two real visits) — it's specifically
+// about suppressing a second call that fires within the same interaction
+// window as the first, before the first one has even finished opening the
+// tab. Keyed by link code so clicking two different links back-to-back is
+// never blocked by this.
+const recentOpens = new Map();
+const OPEN_DEBOUNCE_MS = 800;
+
 async function openLink(code) {
   const link = links.find(l => l.code === code);
   if (!link) return;
 
-  const newClicks = link.clicks + 1;
+  const now = Date.now();
+  const lastOpen = recentOpens.get(code) || 0;
+  if (now - lastOpen < OPEN_DEBOUNCE_MS) return;
+  recentOpens.set(code, now);
 
-  try {
-    const { error } = await supabaseClient
-      .from("links")
-      .update({ clicks: newClicks })
-      .eq("code", code);
+  window.open(`${BASE_URL}/api/redirect?id=${code}`, "_blank");
 
-    if (error) throw error;
-
-    link.clicks = newClicks;
-    renderAll();
-
-    let destination = link.original.trim();
-    if (!/^https?:\/\//i.test(destination)) {
-      destination = "https://" + destination;
-    }
-    window.open(destination, "_blank");
-  } catch (err) {
-    console.error("Analytics logging failed:", err);
-    showToast("Analytics synchronization error.");
-  }
+  // The click above is logged server-side and won't be reflected in our
+  // already-loaded `links`/`clicksLog` state, so pull fresh data shortly
+  // after so the dashboard's counts catch up without a manual refresh.
+  setTimeout(() => {
+    loadLinks();
+    loadClicks();
+  }, 1200);
 }
 
 async function deleteLink(code) {
@@ -972,6 +995,53 @@ async function deleteLink(code) {
   expandedRows.delete(code);
   renderAll();
   showToast("Tracking link deleted successfully.");
+}
+
+// Flow 2 — Duplicate Merge (Reconciliation). Real-time matching in
+// api/redirect.js only ever looks back MATCH_WINDOW_MINUTES worth of
+// clicks, so pairs of clicks from the same real visitor that land further
+// apart than that (or that arrive during a race, a temporary lookup
+// failure, or an IP change) can still end up as separate visitor cards.
+// This is the admin-triggered cleanup pass that catches those: it re-scans
+// ALL recorded clicks (no time bound, unlike the real-time matcher) using
+// the same two-tier rule — device fingerprint first, then same IP + OS —
+// and folds every duplicate group's clicks onto the visitor_id that
+// clicked first, so the extra cards disappear from the Users listing.
+// merge_duplicate_visitors() (see merge_duplicate_visitors_migration.sql)
+// does the actual grouping/reassignment in one locked database call so
+// concurrent runs (e.g. two admins clicking this at once) can't race.
+async function handleMergeDuplicates() {
+  if (!confirm(
+    "Scan every recorded visitor for likely duplicates (same device fingerprint, or same IP + OS) and merge them into a single visitor card?\n\nThis updates visitor records directly and can't be undone."
+  )) return;
+
+  usersMergeBtn.disabled = true;
+  const originalLabel = usersMergeLabel.textContent;
+  usersMergeLabel.textContent = "Merging…";
+
+  try {
+    const { data, error } = await supabaseClient.rpc("merge_duplicate_visitors", {});
+
+    if (error) {
+      console.error("Merge duplicates error:", error);
+      showToast("Failed to merge duplicate visitors.");
+      return;
+    }
+
+    const result = Array.isArray(data) ? data[0] : data;
+    const mergedCount = result?.merged_visitor_count ?? 0;
+
+    if (mergedCount === 0) {
+      showToast("No duplicate visitors found.");
+      return;
+    }
+
+    await loadClicks();
+    showToast(`Merged ${mergedCount.toLocaleString()} duplicate ${mergedCount === 1 ? "visitor" : "visitors"}.`);
+  } finally {
+    usersMergeBtn.disabled = false;
+    usersMergeLabel.textContent = originalLabel;
+  }
 }
 
 function copyLinkToClipboard(code, silent = false) {
@@ -1605,11 +1675,23 @@ function visitorStatus(click) {
   return hasEarlierVisit ? "Returning" : "New";
 }
 
-// Total number of clicks on record for this visitor (across every link
-// they've opened), derived from actual click history rather than a
-// fabricated counter — mirrors how visitorStatus() derives New/Returning.
+// Number of clicks this visitor has recorded on THIS link (click.link_code),
+// derived from actual click history rather than a fabricated counter —
+// mirrors how visitorStatus() derives New/Returning.
+//
+// This used to sum the visitor's clicks across every link they've ever
+// opened, not just this one. A visitor card is always shown in the context
+// of one specific link (the "Recent Visitors" panel under a link, or a
+// single click event on the Users page tagged "via <code>"), so a global,
+// cross-link total here could run higher than that link's own Total Clicks
+// stat — exactly the "12 clicks on a card but 4 Total Clicks for the link"
+// mismatch. Scoping to click.link_code keeps every card's number consistent
+// with the link it's actually being shown under.
 function visitorClickCount(click) {
-  return clicksLog.reduce((n, c) => n + (c.visitor_id === click.visitor_id ? 1 : 0), 0);
+  return clicksLog.reduce(
+    (n, c) => n + (c.visitor_id === click.visitor_id && c.link_code === click.link_code ? 1 : 0),
+    0
+  );
 }
 
 // Collapses a list of click events down to one entry per unique visitor —
@@ -1725,8 +1807,15 @@ function buildLinkItem(link, context = "dashboard") {
     return wrap;
   }
 
-  const allLinkClicks = clicksForCode(link.code);
-  const recentClicks = allLinkClicks.slice(0, 3);
+  // clicksForCode() returns every raw click event on this link - a visitor
+  // who clicked 3 times shows up as 3 entries there. dedupeByVisitor()
+  // collapses that to one entry per unique visitor (their most recent
+  // click), which is what "Recent visitors" and "View all N visitors"
+  // should both be counting - otherwise the same person's repeat clicks
+  // each got their own card here ("doubling"), and the "View all N" count
+  // didn't match the Visitors stat shown above it.
+  const linkVisitors = dedupeByVisitor(clicksForCode(link.code));
+  const recentClicks = linkVisitors.slice(0, 3);
   const detail = document.createElement("div");
   detail.className = "row-detail";
   detail.hidden = !expandedRows.has(link.code);
@@ -1737,7 +1826,7 @@ function buildLinkItem(link, context = "dashboard") {
     detail.innerHTML = `
       <div class="row-detail-head">Recent visitors</div>
       <div class="visitor-cards">${recentClicks.map(c => buildVisitorCard(c, { navigate: true })).join("")}</div>
-      ${allLinkClicks.length > 3 ? `<button class="link-viewall" data-code="${escapeHtml(link.code)}">View all ${allLinkClicks.length} visitors →</button>` : ""}
+      ${linkVisitors.length > 3 ? `<button class="link-viewall" data-code="${escapeHtml(link.code)}">View all ${linkVisitors.length} visitors →</button>` : ""}
     `;
     wireVisitorCardNavigation(detail);
     const viewAll = detail.querySelector(".link-viewall");
@@ -1777,7 +1866,7 @@ function buildLinkRow(link, context = "dashboard") {
   const clickCount = link.clicks || 0;
   const clicksAlignClass = isShortStat(clickCount) ? " clicks-center" : "";
   const linkClicks = clicksForCode(link.code);
-  const visitorCount = linkClicks.length;
+  const visitorCount = dedupeByVisitor(linkClicks).length;
   const latest = linkClicks[0];
   const flag = latest ? (latest.country_code || flagForCode(link.code)) : flagForCode(link.code);
   const isOpen = expandedRows.has(link.code);
@@ -2040,7 +2129,7 @@ function buildHistoryRow(link) {
 
   const clickCount = link.clicks || 0;
   const linkClicks = clicksForCode(link.code);
-  const visitorCount = linkClicks.length;
+  const visitorCount = dedupeByVisitor(linkClicks).length;
   const latest = linkClicks[0];
   const flag = latest ? (latest.country_code || flagForCode(link.code)) : flagForCode(link.code);
   const createdIso = latest ? latest.created_at : link.created;
@@ -2185,8 +2274,15 @@ function buildHistoryItem(link) {
   wrap.className = "link-item";
   wrap.appendChild(buildHistoryRow(link));
 
-  const allLinkClicks = clicksForCode(link.code);
-  const recentClicks = allLinkClicks.slice(0, 3);
+  // clicksForCode() returns every raw click event on this link - a visitor
+  // who clicked 3 times shows up as 3 entries there. dedupeByVisitor()
+  // collapses that to one entry per unique visitor (their most recent
+  // click), which is what "Recent visitors" and "View all N visitors"
+  // should both be counting - otherwise the same person's repeat clicks
+  // each got their own card here ("doubling"), and the "View all N" count
+  // didn't match the Visitors stat shown above it.
+  const linkVisitors = dedupeByVisitor(clicksForCode(link.code));
+  const recentClicks = linkVisitors.slice(0, 3);
   const detail = document.createElement("div");
   detail.className = "row-detail";
   detail.hidden = !expandedRows.has(link.code);
@@ -2197,7 +2293,7 @@ function buildHistoryItem(link) {
     detail.innerHTML = `
       <div class="row-detail-head">Recent visitors</div>
       <div class="visitor-cards">${recentClicks.map(c => buildVisitorCard(c, { navigate: true })).join("")}</div>
-      ${allLinkClicks.length > 3 ? `<button class="link-viewall" data-code="${escapeHtml(link.code)}">View all ${allLinkClicks.length} visitors →</button>` : ""}
+      ${linkVisitors.length > 3 ? `<button class="link-viewall" data-code="${escapeHtml(link.code)}">View all ${linkVisitors.length} visitors →</button>` : ""}
     `;
     wireVisitorCardNavigation(detail);
     const viewAll = detail.querySelector(".link-viewall");
@@ -2252,7 +2348,7 @@ function buildGridCard(link, context = "dashboard") {
 
   const clickCount = link.clicks || 0;
   const linkClicks = clicksForCode(link.code);
-  const visitorCount = linkClicks.length;
+  const visitorCount = dedupeByVisitor(linkClicks).length;
   const latest = linkClicks[0];
   const flag = latest ? (latest.country_code || flagForCode(link.code)) : flagForCode(link.code);
   const createdIso = latest ? latest.created_at : link.created;

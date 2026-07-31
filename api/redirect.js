@@ -1,19 +1,21 @@
 import { createClient } from "@supabase/supabase-js";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 
 const supabase = createClient(
   "https://jctdtavzpcxnvpebpyqx.supabase.co",
   "sb_publishable_QUrKq5DUY3pwmHv4HEjKCQ_bGFZi4VQ"
 );
 
-// How long a device fingerprint (IP + device type + OS) stays eligible to
-// be matched back to an earlier visitor when there's no cookie to go on
-// (private/incognito windows, or a different browser on the same
-// machine). Kept short-ish on purpose: it's a heuristic, not an identity
-// system, and a shorter window limits how often two different people on
-// the same shared IP (office wifi, campus network, carrier NAT) could
-// get merged into one "visitor".
-const DEVICE_MATCH_WINDOW_HOURS = 12;
+// How long a no-cookie click stays eligible to be matched back to an
+// earlier visitor, under EITHER matching tier below (device fingerprint,
+// or IP+OS fallback). Kept short on purpose: it's a heuristic, not an
+// identity system, and a short window limits how often two different
+// people on the same shared IP (office wifi, campus network, carrier
+// NAT) or with coincidentally identical fingerprints could get merged
+// into one "visitor". This is a lookback window only, not a delay —
+// every click is still resolved and the dashboard updated immediately;
+// the window just bounds how far back the match query searches.
+const MATCH_WINDOW_MINUTES = 30;
 
 // Salt so ip_hash isn't a trivial lookup table of hashed IPs. Override
 // with an IP_HASH_SALT environment variable in Vercel for a private
@@ -23,6 +25,48 @@ const IP_HASH_SALT = process.env.IP_HASH_SALT || "link-tracker-v1";
 function hashIp(ip) {
   if (!ip) return null;
   return createHash("sha256").update(IP_HASH_SALT + "|" + ip).digest("hex").slice(0, 32);
+}
+
+// ------------------------------------------------------------------
+// Device fingerprint (highest-priority match signal)
+// ------------------------------------------------------------------
+// This is a header-based stand-in for a real client-side fingerprint.
+// The tracking link resolves through this endpoint as a bare 302 — no
+// HTML page ever loads in the visitor's browser — so there's no
+// opportunity to run a JS fingerprinting library (canvas/audio/WebGL
+// hashing, FingerprintJS, etc.) the way "device fingerprint" usually
+// implies. Deliberately NOT combined with IP: it's meant to be an
+// independent signal from the IP+OS fallback tier below, e.g. so the
+// same phone recognized on wifi is still recognized after switching to
+// cellular data.
+//
+// Built from the full raw User-Agent (exact browser + OS + build,
+// rather than the parsed-down `browser`/`os` fields used elsewhere) plus
+// Accept-Language and, where the browser sends them, Client Hints
+// (sec-ch-ua / sec-ch-ua-platform / sec-ch-ua-platform-version /
+// sec-ch-ua-mobile) — the most specific signal available without adding
+// a page load. It's coarser than a real JS fingerprint: two different
+// people on an identical phone model, OS version, browser version, and
+// language locale could still collide. That's why it's only ever tier
+// one — anything it misses still gets a chance to merge under the
+// IP+OS fallback.
+function computeFingerprint(req) {
+  const ua = req.headers["user-agent"];
+  if (!ua) return null; // no UA at all → nothing reliable to hash; fall through to IP+OS tier
+
+  const parts = [
+    ua,
+    req.headers["accept-language"] || "",
+    req.headers["sec-ch-ua"] || "",
+    req.headers["sec-ch-ua-platform"] || "",
+    req.headers["sec-ch-ua-platform-version"] || "",
+    req.headers["sec-ch-ua-mobile"] || ""
+  ];
+
+  return createHash("sha256")
+    .update(IP_HASH_SALT + "|fp|" + parts.join("|"))
+    .digest("hex")
+    .slice(0, 32);
 }
 
 function getClientIp(req) {
@@ -70,8 +114,13 @@ function getCookie(req, name) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+// Only used if the database RPC call fails outright (see the try/catch
+// around it below) — a last-resort ID so the redirect and cookie still
+// work even when analytics logging is broken. crypto.randomUUID() (not
+// Math.random()) so this fallback path can't itself introduce a visitor
+// ID collision.
 function genVisitorId() {
-  return "v_" + (Math.random().toString(16).slice(2, 8) + Math.random().toString(16).slice(2, 4)).padEnd(8, "0");
+  return "v_" + randomUUID().replace(/-/g, "").slice(0, 16);
 }
 
 export default async function handler(req, res) {
@@ -88,7 +137,7 @@ export default async function handler(req, res) {
       .eq("code", id.toLowerCase())
       .single();
 
-    if (error || !data) {
+    if (error || !data || !data.original || !data.original.trim()) {
       return res.status(404).send("Tracking link not found");
     }
 
@@ -105,43 +154,55 @@ export default async function handler(req, res) {
 
     const clientIp = getClientIp(req);
     const ipHash = hashIp(clientIp);
+    const fingerprintHash = computeFingerprint(req);
 
-    // ---- Visitor identity ----
-    // 1. Cookie, if present — this is the strongest signal (same browser,
-    //    same profile, not incognito) and is checked first.
-    // 2. Otherwise, this looks like a first-ever request from this browser
-    //    (fresh install, cleared cookies, or a private/incognito window).
-    //    Before minting a brand-new visitor, check whether the same
-    //    physical device — same IP + same device type + same OS — was
-    //    already seen for this link recently. If so, reuse that visitor's
-    //    ID instead of a new one, so a second browser or a fresh
-    //    incognito window on the same machine doesn't get double-counted
-    //    or show up as a separate person on the Users page.
-    // 3. Otherwise, this really is a new visitor — mint a fresh ID.
-    let visitorId = getCookie(req, "ltv_id");
+    // ---- Visitor identity + click logging (one atomic call) ----
+    // record_click_and_resolve_visitor() (see
+    // atomic_visitor_resolution_migration.sql, updated by
+    // fingerprint_and_30min_window_migration.sql) does everything that
+    // used to be three separate steps here — check for a matching prior
+    // click, insert this click, bump the counter — inside one locked
+    // database transaction. That closes a race where rapid/concurrent
+    // requests with no cookie yet (a burst of clicks before the first
+    // response's Set-Cookie lands) could each see "no match found" at the
+    // same time and mint their own visitor_id, splitting one real person
+    // into several counted "visitors" even though the click total stayed
+    // correct.
+    //
+    // When there's no cookie, matching runs in two tiers against the last
+    // MATCH_WINDOW_MINUTES of clicks on this link: device fingerprint
+    // first (highest priority), then IP+device+OS as a fallback if the
+    // fingerprint didn't match (or wasn't available).
+    //
+    // Passing the cookie value straight into the function means: if a
+    // cookie is present, it's used as-is (no lookup, no race — the browser
+    // already resolved this identity on an earlier request). Only the
+    // no-cookie path takes the lock and runs the two-tier match.
+    const cookieVisitorId = getCookie(req, "ltv_id");
 
-    if (!visitorId) {
-      if (ipHash) {
-        const since = new Date(Date.now() - DEVICE_MATCH_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
-        const { data: deviceMatch, error: deviceMatchErr } = await supabase
-          .from("clicks")
-          .select("visitor_id")
-          .eq("link_code", id.toLowerCase())
-          .eq("ip_hash", ipHash)
-          .eq("device", device)
-          .eq("os", os)
-          .gte("created_at", since)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (deviceMatchErr) console.error("Device-match lookup failed:", deviceMatchErr);
-        if (deviceMatch?.visitor_id) {
-          visitorId = deviceMatch.visitor_id;
-        }
+    const { data: resolvedVisitorId, error: rpcError } = await supabase.rpc(
+      "record_click_and_resolve_visitor",
+      {
+        p_link_code: id.toLowerCase(),
+        p_cookie_visitor_id: cookieVisitorId,
+        p_fingerprint_hash: fingerprintHash,
+        p_ip_hash: ipHash,
+        p_device: device,
+        p_os: os,
+        p_browser: browser,
+        p_country: country,
+        p_country_code: countryCode,
+        p_city: city,
+        p_window_minutes: MATCH_WINDOW_MINUTES
       }
-      if (!visitorId) visitorId = genVisitorId();
-    }
+    );
+
+    if (rpcError) console.error("Visitor resolution/logging failed:", rpcError);
+
+    // Best-effort fallback so the returning-visitor cookie still gets set
+    // even if the database call above failed outright — analytics staying
+    // broken should never block the redirect itself.
+    const visitorId = resolvedVisitorId || cookieVisitorId || genVisitorId();
 
     // Cookie is set every time (even when matched by device fallback) so
     // that *this* browser recognizes itself by cookie on the very next
@@ -150,47 +211,6 @@ export default async function handler(req, res) {
       "Set-Cookie",
       `ltv_id=${visitorId}; Max-Age=31536000; Path=/; SameSite=Lax`
     );
-
-    // ---- Log this visit and bump the raw click counter ----
-    // "clicks" on the link is a raw hit count: every visit increments it,
-    // including repeat visits from the same visitor (Click = one visit).
-    // Uniqueness lives entirely in the "clicks" table's visitor_id column —
-    // the dashboard derives Users/Visitors by deduping that table, never by
-    // gating this counter. Conflating the two here is what let the
-    // link-level counter silently become a unique-visitor count instead of
-    // a click count.
-    //
-    // IMPORTANT: both writes are awaited (in parallel) BEFORE the redirect
-    // is sent. On Vercel, a serverless function's execution is frozen the
-    // instant the response is sent — any un-awaited ("fire-and-forget")
-    // promise started after that point is not guaranteed to finish, which
-    // is why the "clicks" table was staying empty. Using Promise.all here
-    // keeps things fast (both requests run concurrently) while guaranteeing
-    // the insert actually completes.
-    const tasks = [
-      supabase.from("clicks").insert([
-        {
-          link_code: id.toLowerCase(),
-          visitor_id: visitorId,
-          country,
-          country_code: countryCode,
-          city,
-          device,
-          browser,
-          os,
-          ip_hash: ipHash
-        }
-      ]),
-      supabase
-        .from("links")
-        .update({ clicks: data.clicks + 1 })
-        .eq("code", id.toLowerCase())
-    ];
-
-    const results = await Promise.all(tasks);
-    const clickErr = results[0].error;
-
-    if (clickErr) console.error("Visitor log insert failed:", clickErr);
 
     let destination = data.original.trim();
     if (!/^https?:\/\//i.test(destination)) {

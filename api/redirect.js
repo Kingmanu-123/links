@@ -125,12 +125,60 @@ function genVisitorId() {
 
 export default async function handler(req, res) {
   try {
-    const { id } = req.query;
+    const { id, bc } = req.query;
 
     if (!id) {
       return res.status(400).send("Missing tracking code");
     }
 
+    // ------------------------------------------------------------------
+    // Pass 1: Brave-detection interstitial
+    // ------------------------------------------------------------------
+    // Brave deliberately sends the exact same User-Agent (and even the
+    // same sec-ch-ua Client Hints) as Chrome, specifically so servers
+    // can't tell them apart — that's a privacy feature of Brave, not a
+    // bug here. The only reliable signal is the client-side
+    // `navigator.brave` API, which only exists once a page has loaded
+    // JS in the visitor's own browser. So on the very first hit (no
+    // `bc` param yet) we serve a near-instant self-redirecting page that
+    // runs that check, then immediately re-requests this same endpoint
+    // with the result attached (?bc=1 / ?bc=0). Pass 2 below does the
+    // real DB lookup, logging, and the actual 302 to the destination.
+    // If JS is blocked, the <noscript> refresh still gets the visitor
+    // through (just without Brave-specific credit — logged via normal
+    // UA parsing instead).
+    if (bc === undefined) {
+      const safeId = encodeURIComponent(id);
+      const chromeUrl = `/api/redirect?id=${safeId}&bc=0`;
+      const braveUrl = `/api/redirect?id=${safeId}&bc=1`;
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      return res.status(200).send(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Redirecting…</title>
+<noscript><meta http-equiv="refresh" content="0;url=${chromeUrl}"></noscript>
+</head><body>
+<script>
+(function () {
+  function go(url) { window.location.replace(url); }
+  try {
+    if (navigator.brave && typeof navigator.brave.isBrave === "function") {
+      navigator.brave.isBrave()
+        .then(function (isBrave) { go(isBrave ? ${JSON.stringify(braveUrl)} : ${JSON.stringify(chromeUrl)}); })
+        .catch(function () { go(${JSON.stringify(chromeUrl)}); });
+    } else {
+      go(${JSON.stringify(chromeUrl)});
+    }
+  } catch (e) {
+    go(${JSON.stringify(chromeUrl)});
+  }
+})();
+</script>
+</body></html>`);
+    }
+
+    // ------------------------------------------------------------------
+    // Pass 2: real lookup + logging + redirect (bc=0 or bc=1 present)
+    // ------------------------------------------------------------------
     const { data, error } = await supabase
       .from("links")
       .select("*")
@@ -143,7 +191,11 @@ export default async function handler(req, res) {
 
     // ---- Device / browser / OS ----
     const ua = req.headers["user-agent"] || "";
-    const { os, browser, device } = parseUserAgent(ua);
+    const { os, browser: parsedBrowser, device } = parseUserAgent(ua);
+    // bc=1 means the pass-1 interstitial confirmed navigator.brave client-side;
+    // that overrides the UA parse, which would otherwise always say "Chrome"
+    // (Brave intentionally mirrors Chrome's UA string).
+    const browser = bc === "1" ? "Brave" : parsedBrowser;
 
     // ---- Geo (Vercel injects these headers automatically at the edge) ----
     const country = req.headers["x-vercel-ip-country"] || null;
@@ -155,6 +207,17 @@ export default async function handler(req, res) {
     const clientIp = getClientIp(req);
     const ipHash = hashIp(clientIp);
     const fingerprintHash = computeFingerprint(req);
+
+    // Temporary diagnostic: fingerprint_hash has been showing up NULL in
+    // the clicks table. computeFingerprint() only returns null when there's
+    // no user-agent header at all, so this line pins down on the next
+    // request whether that's actually happening (real browser clicks always
+    // send one) or whether fingerprintHash is non-null here but still not
+    // making it into the row — which would point at a stale deployment
+    // instead. Safe to remove once confirmed.
+    if (!fingerprintHash) {
+      console.warn("fingerprintHash is null — user-agent header present:", Boolean(ua), "| raw ua:", ua || "(none)");
+    }
 
     // ---- Visitor identity + click logging (one atomic call) ----
     // record_click_and_resolve_visitor() (see

@@ -90,11 +90,24 @@ function parseUserAgent(ua) {
   else if (/linux/i.test(ua)) os = "Linux";
 
   let browser = "Unknown";
-  if (/edg\//i.test(ua)) browser = "Edge";
-  else if (/opr\/|opera/i.test(ua)) browser = "Opera";
-  else if (/crios/i.test(ua)) browser = "Chrome";
-  else if (/fxios/i.test(ua)) browser = "Firefox";
-  else if (/chrome\//i.test(ua) && !/edg\//i.test(ua)) browser = "Chrome";
+  // Order matters: most specific / least-common-token first, generic
+  // Chrome/Safari fallback last — every browser below is Chromium-based
+  // and carries "Chrome/" somewhere in its UA, so if we checked Chrome
+  // first every one of these would be misread as Chrome.
+  if (/edga\/|edgios\/|edg\//i.test(ua)) browser = "Edge";           // Edg/ (desktop), EdgA/ (Android), EdgiOS/ (iOS)
+  else if (/opios\/|opr\/|opera/i.test(ua)) browser = "Opera";        // OPiOS/ (iOS), OPR/ (desktop+Android), legacy "Opera"
+  else if (/samsungbrowser\//i.test(ua)) browser = "Samsung Internet";
+  else if (/ucbrowser|ucweb/i.test(ua)) browser = "UC Browser";
+  else if (/vivaldi\//i.test(ua)) browser = "Vivaldi";
+  else if (/yabrowser\//i.test(ua)) browser = "Yandex";
+  else if (/miuibrowser\//i.test(ua)) browser = "Mi Browser";
+  else if (/huaweibrowser\//i.test(ua)) browser = "Huawei Browser";
+  else if (/(?:mqq|qq)browser\//i.test(ua)) browser = "QQ Browser";
+  else if (/baidubrowser|bidubrowser/i.test(ua)) browser = "Baidu Browser";
+  else if (/duckduckgo\//i.test(ua)) browser = "DuckDuckGo";
+  else if (/crios\//i.test(ua)) browser = "Chrome";                  // Chrome on iOS
+  else if (/fxios\//i.test(ua)) browser = "Firefox";                 // Firefox on iOS
+  else if (/chrome\//i.test(ua)) browser = "Chrome";
   else if (/firefox\//i.test(ua)) browser = "Firefox";
   else if (/safari\//i.test(ua) && /version\//i.test(ua)) browser = "Safari";
 

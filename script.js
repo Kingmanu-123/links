@@ -105,6 +105,8 @@ const dashboardView = document.getElementById("dashboard-view");
 const allLinksView = document.getElementById("all-links-view");
 const allUsersView = document.getElementById("all-users-view");
 const viewAllBtn = document.getElementById("view-all-btn");
+const dashRefreshBtn = document.getElementById("dash-refresh-btn");
+const dashRefreshLabel = document.getElementById("dash-refresh-label");
 const backBtn = document.getElementById("back-btn");
 const linksUsersBtn = document.getElementById("links-users-btn");
 const usersHomeBtn = document.getElementById("users-home-btn");
@@ -444,6 +446,7 @@ function forceGridView(toggleId, containerEl) {
 
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
+  initHoverTips();
   forceGridView("links-view-toggle", allTableBody);
   forceGridView("users-view-toggle", allUsersBody);
   try { localStorage.removeItem("lt-view-modes"); } catch {}
@@ -454,6 +457,16 @@ document.addEventListener("DOMContentLoaded", () => {
   loadClicks();
   loadSocialPlatforms().then(loadCampaignJoins);
   loadKnownTags();
+
+  // Deep-link support: opening this page as index.html#all or #users jumps
+  // straight to that view. Added so external entry points (e.g. the
+  // OceanGlass overview dashboard's sidebar) can link directly into a
+  // specific view instead of always landing on the dashboard. No hash (or
+  // any other value) falls through to the existing default "dashboard" view.
+  const deepLinkView = (location.hash || "").replace("#", "");
+  if (deepLinkView === "all" || deepLinkView === "users") {
+    switchView(deepLinkView);
+  }
 
   createBtn.addEventListener("click", handleCreateLink);
 
@@ -568,6 +581,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   usersMergeBtn.addEventListener("click", handleMergeDuplicates);
+  dashRefreshBtn.addEventListener("click", handleDashboardRefresh);
 
   // ---- All Tracking Links: Choose Type + Link Name + Tag Filter ----
   setupTypeFilter({
@@ -694,6 +708,101 @@ const THEME_ORDER = ["winter", "aurora", "lumina"];
 function initTheme() {
   const saved = localStorage.getItem("lt-theme");
   if (THEME_ORDER.includes(saved) && saved !== "winter") applyTheme(saved, false);
+}
+
+// ==========================================
+// HOVER TOOLTIP (IP / Visitor ID full values)
+// ==========================================
+// One shared, `position: fixed` bubble reused for every .lt-tooltip field
+// instead of a per-field CSS pseudo-element. Fixed positioning means it's
+// never clipped by an ancestor's overflow, and measuring it with
+// getBoundingClientRect on every show lets it clamp to the viewport —
+// so a long IP hash can no longer push the bubble off-screen the way the
+// old centered-by-percentage pseudo-element could.
+let hoverTipEl = null;
+
+function initHoverTips() {
+  if (!window.matchMedia("(hover: hover)").matches) return; // touch devices keep native title only
+
+  hoverTipEl = document.createElement("div");
+  hoverTipEl.id = "lt-hover-tip";
+  document.body.appendChild(hoverTipEl);
+
+  document.addEventListener("mouseover", (e) => {
+    const field = e.target.closest(".lt-tooltip");
+    if (field) showHoverTip(field);
+  });
+
+  document.addEventListener("mouseout", (e) => {
+    const field = e.target.closest(".lt-tooltip");
+    if (field && !field.contains(e.relatedTarget)) hideHoverTip();
+  });
+
+  // A scroll or resize can leave the bubble pointing at empty space —
+  // simplest correct fix is to just hide it rather than re-track the
+  // now-possibly-moved field.
+  window.addEventListener("scroll", hideHoverTip, { passive: true, capture: true });
+  window.addEventListener("resize", hideHoverTip);
+}
+
+// Buttons whose hover tip is a short bullet list instead of a single line
+// of plain text (see showHoverTip below) — keyed by element id.
+const TOOLTIP_LISTS = {
+  "dash-refresh-btn": [
+    "Scans all visitors for likely duplicates (same device fingerprint, same IP + OS, or same IP across a mobile + desktop device)",
+    "Merges matches into one card",
+    "Reloads the dashboard",
+  ],
+  "users-merge-btn": [
+    "Scans all visitors for likely duplicates (same device fingerprint, same IP + OS, or same IP across a mobile + desktop device)",
+    "Merges matches into one card",
+  ],
+};
+
+function showHoverTip(field) {
+  const list = TOOLTIP_LISTS[field.id];
+  const text = field.dataset.tooltip;
+  if (!list && !text) return;
+  if (!hoverTipEl) return;
+
+  hoverTipEl.classList.toggle("is-list", !!list);
+  if (list) {
+    hoverTipEl.innerHTML = `<ul>${list.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+  } else {
+    hoverTipEl.textContent = text;
+  }
+  hoverTipEl.classList.remove("is-visible", "is-below");
+
+  const fieldRect = field.getBoundingClientRect();
+  const tipRect = hoverTipEl.getBoundingClientRect();
+  const margin = 8;
+  const gap = 12;
+
+  let left = fieldRect.left + fieldRect.width / 2 - tipRect.width / 2;
+  left = Math.min(Math.max(left, margin), window.innerWidth - tipRect.width - margin);
+
+  let top = fieldRect.top - tipRect.height - gap;
+  let below = false;
+  if (top < margin) {
+    top = fieldRect.bottom + gap;
+    below = true;
+  }
+
+  // Arrow stays pointed at the field's true center even when the bubble
+  // itself has been shifted sideways to stay on-screen.
+  const fieldCenter = fieldRect.left + fieldRect.width / 2;
+  let arrowLeft = fieldCenter - left;
+  arrowLeft = Math.min(Math.max(arrowLeft, 12), tipRect.width - 12);
+
+  hoverTipEl.style.setProperty("--lt-tip-arrow-left", `${arrowLeft}px`);
+  hoverTipEl.style.left = `${left}px`;
+  hoverTipEl.style.top = `${top}px`;
+  hoverTipEl.classList.toggle("is-below", below);
+  hoverTipEl.classList.add("is-visible");
+}
+
+function hideHoverTip() {
+  if (hoverTipEl) hoverTipEl.classList.remove("is-visible");
 }
 
 function toggleTheme() {
@@ -997,27 +1106,15 @@ async function deleteLink(code) {
   showToast("Tracking link deleted successfully.");
 }
 
-// Flow 2 — Duplicate Merge (Reconciliation). Real-time matching in
-// api/redirect.js only ever looks back MATCH_WINDOW_MINUTES worth of
-// clicks, so pairs of clicks from the same real visitor that land further
-// apart than that (or that arrive during a race, a temporary lookup
-// failure, or an IP change) can still end up as separate visitor cards.
-// This is the admin-triggered cleanup pass that catches those: it re-scans
-// ALL recorded clicks (no time bound, unlike the real-time matcher) using
-// the same two-tier rule — device fingerprint first, then same IP + OS —
-// and folds every duplicate group's clicks onto the visitor_id that
-// clicked first, so the extra cards disappear from the Users listing.
-// merge_duplicate_visitors() (see merge_duplicate_visitors_migration.sql)
-// does the actual grouping/reassignment in one locked database call so
-// concurrent runs (e.g. two admins clicking this at once) can't race.
-async function handleMergeDuplicates() {
-  if (!confirm(
-    "Scan every recorded visitor for likely duplicates (same device fingerprint, or same IP + OS) and merge them into a single visitor card?\n\nThis updates visitor records directly and can't be undone."
+async function runMergeDuplicates(btnEl, labelEl, { confirmFirst = true, busyLabel = "Merging…", loadLinksToo = false } = {}) {
+  if (confirmFirst && !confirm(
+    "Scan every recorded visitor for likely duplicates (same device fingerprint, same IP + OS, or the same IP across a mobile + desktop device) and merge them into a single visitor card?\n\nThis updates visitor records directly and can't be undone."
   )) return;
 
-  usersMergeBtn.disabled = true;
-  const originalLabel = usersMergeLabel.textContent;
-  usersMergeLabel.textContent = "Merging…";
+  btnEl.disabled = true;
+  btnEl.classList.add("is-loading");
+  const originalLabel = labelEl.textContent;
+  labelEl.textContent = busyLabel;
 
   try {
     const { data, error } = await supabaseClient.rpc("merge_duplicate_visitors", {});
@@ -1031,17 +1128,53 @@ async function handleMergeDuplicates() {
     const result = Array.isArray(data) ? data[0] : data;
     const mergedCount = result?.merged_visitor_count ?? 0;
 
+    // loadClicks() alone is enough to fold duplicate visitor cards together
+    // and combine their total click counts everywhere clicksLog feeds a
+    // view (dashboard table, Users listing, visitor cards). Links (and
+    // their own click totals) don't change shape from a visitor merge, but
+    // the dashboard Refresh action re-pulls them too so "Refresh" reads as
+    // a full data reload, not just a dedupe pass.
+    if (loadLinksToo) await loadLinks();
+    await loadClicks();
+
     if (mergedCount === 0) {
-      showToast("No duplicate visitors found.");
+      showToast(loadLinksToo ? "Refreshed — no duplicate visitors found." : "No duplicate visitors found.");
       return;
     }
 
-    await loadClicks();
-    showToast(`Merged ${mergedCount.toLocaleString()} duplicate ${mergedCount === 1 ? "visitor" : "visitors"}.`);
+    showToast(`Merged ${mergedCount.toLocaleString()} duplicate ${mergedCount === 1 ? "visitor" : "visitors"} — click counts combined.`);
   } finally {
-    usersMergeBtn.disabled = false;
-    usersMergeLabel.textContent = originalLabel;
+    btnEl.disabled = false;
+    btnEl.classList.remove("is-loading");
+    labelEl.textContent = originalLabel;
   }
+}
+
+// Flow 2 — Duplicate Merge (Reconciliation). Real-time matching in
+// api/redirect.js only ever looks back MATCH_WINDOW_MINUTES worth of
+// clicks, so pairs of clicks from the same real visitor that land further
+// apart than that (or that arrive during a race, a temporary lookup
+// failure, or an IP change) can still end up as separate visitor cards.
+// This is the admin-triggered cleanup pass that catches those: it re-scans
+// ALL recorded clicks (no time bound, unlike the real-time matcher) in
+// three passes — device fingerprint first, then same IP + OS + device,
+// then (new) same IP across different device types, e.g. a "Mobile" card
+// and a "Desktop" card sharing one IP — and folds every duplicate group's
+// clicks onto the visitor_id that clicked first, so the extra cards
+// disappear from the Users listing.
+// merge_duplicate_visitors() (see merge_duplicate_visitors_migration.sql)
+// does the actual grouping/reassignment in one locked database call so
+// concurrent runs (e.g. two admins clicking this at once) can't race.
+function handleMergeDuplicates() {
+  return runMergeDuplicates(usersMergeBtn, usersMergeLabel);
+}
+
+// Dashboard "Refresh" button (left of View All Links): same merge pass as
+// above, plus a full links+clicks reload, so any visitor cards shown on the
+// dashboard (Recent Visitors, Tracking History) also collapse duplicates
+// into one card with a combined Total Clicks count.
+function handleDashboardRefresh() {
+  return runMergeDuplicates(dashRefreshBtn, dashRefreshLabel, { busyLabel: "Refreshing…", loadLinksToo: true });
 }
 
 function copyLinkToClipboard(code, silent = false) {
@@ -1148,6 +1281,19 @@ function formatDate(iso) {
   const datePart = d.toLocaleDateString([], { month: "short", day: "2-digit", year: "numeric" });
   const timePart = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return `${datePart} · ${timePart}`;
+}
+
+// Same date/time as formatDate(), but split into two pieces so the time can
+// sit on its own line under the date in tight card layouts instead of being
+// squeezed onto one line and clipped by the field's ellipsis.
+function formatDateParts(iso) {
+  if (!iso) return { date: "—", time: "" };
+  const d = new Date(iso);
+  if (isNaN(d)) return { date: "—", time: "" };
+  return {
+    date: d.toLocaleDateString([], { month: "short", day: "2-digit", year: "numeric" }),
+    time: d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  };
 }
 
 function closeAllKebabMenus() {
@@ -1312,7 +1458,14 @@ function renderAllLinks() {
   const { pageItems, safePage, totalPages } = paginate(list, linksPage, linksPageSize);
   linksPage = safePage;
 
-  linksExportSnapshot = { rows: pageItems, filterLabel: filterPill.textContent };
+  // fullRows + offset let the export functions number rows continuously
+  // (page 2 continues at 7, 8, 9…) instead of every page restarting at 1.
+  linksExportSnapshot = {
+    rows: pageItems,
+    fullRows: list,
+    offset: (linksPage - 1) * linksPageSize,
+    filterLabel: filterPill.textContent
+  };
 
   buildLinkList(allTableBody, pageItems, { emptyLabel: anyFilterActive ? "No links match your filters." : "No links created yet.", context: "all", mode: getViewMode() });
 
@@ -1372,7 +1525,8 @@ const ICONS = {
   copy: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="8.5" y="8.5" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M15.5 8.5V5.5A2 2 0 0 0 13.5 3.5H5.5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3" stroke="currentColor" stroke-width="1.8"/></svg>',
   external: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 6H5.5A1.5 1.5 0 0 0 4 7.5v11A1.5 1.5 0 0 0 5.5 20h11a1.5 1.5 0 0 0 1.5-1.5V15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M14 4h6v6M20 4l-9 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   chart: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 20V10M11 20V4M18 20v-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  click: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3.5v3M4.6 6.1l2.1 2.1M3.5 12h3M15.4 6.1l-2.1 2.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M9.3 9.4l8.7 3.3-3.5 1.5-1.5 3.5-3.7-8.3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></svg>'
+  click: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3.5v3M4.6 6.1l2.1 2.1M3.5 12h3M15.4 6.1l-2.1 2.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M9.3 9.4l8.7 3.3-3.5 1.5-1.5 3.5-3.7-8.3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></svg>',
+  ip: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M7 9v6M12 9v6M17 9v6M7 9h.01M12 9h.01M17 9h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 };
 
 // ==========================================
@@ -1746,8 +1900,12 @@ function buildVisitorCard(click, opts = {}) {
         <div class="vfield">${glassIcon("Device", "glow-purple", ICONS.device)}<div><label>Device</label><span>${escapeHtml(click.device || "Unknown")}</span></div></div>
         <div class="vfield">${glassIcon("Browser", "glow-amber", ICONS.browser)}<div><label>Browser</label><span>${escapeHtml(click.browser || "Unknown")}</span></div></div>
         <div class="vfield">${glassIcon("OS", "glow-purple", ICONS.os)}<div><label>OS</label><span>${escapeHtml(click.os || "Unknown")}</span></div></div>
-        <div class="vfield">${glassIcon("Click Time", "glow-teal", ICONS.clock)}<div><label>Click Time</label><span>${escapeHtml(formatDate(click.created_at))}</span></div></div>
-        <div class="vfield">${glassIcon("Visitor ID", "glow-amber", ICONS.user)}<div><label>Visitor ID</label><span class="mono">${escapeHtml(click.visitor_id)}</span></div></div>
+        <div class="vfield">${glassIcon("IP", "glow-purple", ICONS.ip)}<div><label>IP</label><span class="mono lt-tooltip" data-tooltip="${click.ip_hash ? escapeHtml(click.ip_hash) : "Unknown"}" title="${click.ip_hash ? escapeHtml(click.ip_hash) : "Unknown"}">${click.ip_hash ? escapeHtml(click.ip_hash.slice(0, 8)) + "…" : "Unknown"}</span></div></div>
+        <div class="vfield">${glassIcon("Click Time", "glow-teal", ICONS.clock)}<div><label>Click Time</label>${(() => {
+          const { date, time } = formatDateParts(click.created_at);
+          return `<span class="vfield-date">${escapeHtml(date)}</span>${time ? `<span class="vfield-time">${escapeHtml(time)}</span>` : ""}`;
+        })()}</div></div>
+        <div class="vfield">${glassIcon("Visitor ID", "glow-amber", ICONS.user)}<div><label>Visitor ID</label><span class="mono lt-tooltip" data-tooltip="${escapeHtml(click.visitor_id || "Unknown")}" title="${escapeHtml(click.visitor_id || "Unknown")}">${click.visitor_id ? escapeHtml(click.visitor_id.slice(0, 8)) + "…" : "Unknown"}</span></div></div>
         <div class="vfield">${glassIcon("Total Clicks", "glow-teal", ICONS.click)}<div><label>Total Clicks</label><span>${clickCount.toLocaleString()}</span></div></div>
         ${(() => {
           const status = visitorStatus(click);
@@ -2551,7 +2709,7 @@ function renderAllUsers() {
       : "No visitor activity recorded yet. Once someone opens one of your links, they'll show up here.";
     allUsersBody.innerHTML = `<div class="empty-state"><span class="icon">&#128100;</span><span>${emptyMsg}</span></div>`;
     document.getElementById("users-pagination").innerHTML = "";
-    usersExportSnapshot = { rows: [], filterLabel: usersFilterPill.textContent };
+    usersExportSnapshot = { rows: [], fullRows: [], offset: 0, filterLabel: usersFilterPill.textContent };
     return;
   }
 
@@ -2566,7 +2724,15 @@ function renderAllUsers() {
   const { pageItems, safePage } = paginate(list, usersPage, usersPageSize);
   usersPage = safePage;
 
-  usersExportSnapshot = { rows: pageItems, filterLabel: usersFilterPill.textContent };
+  // fullRows = the entire filtered/sorted list (every page) so "Export All"
+  // can dump everything currently in view, not just this page. offset lets
+  // per-page export continue the S.No instead of restarting at 1 each page.
+  usersExportSnapshot = {
+    rows: pageItems,
+    fullRows: list,
+    offset: (usersPage - 1) * usersPageSize,
+    filterLabel: usersFilterPill.textContent
+  };
 
   allUsersBody.innerHTML = pageItems.map(c => buildVisitorCard(c, { showCode: usersLinkFilterMode === "all" })).join("");
   wireVisitorCardToggles(allUsersBody);
@@ -2605,6 +2771,17 @@ function renderAllUsers() {
 // current page of results after any active search/filters/sort, not the
 // full unfiltered dataset.
 
+// A link's "Category" for exports mirrors the same platform/tag fallback
+// already used for the on-screen category badge (see buildHistoryRow): the
+// platform tied to the link's campaign when it has one, else its first tag,
+// else "General" when neither is set.
+function categoryForLink(code) {
+  const rowPlatforms = linkPlatformsByCode[code] || [];
+  const rowTags = linkTagsByCode[code] || [];
+  const primaryPlatform = rowPlatforms.length ? PLATFORM_BY_SLUG[rowPlatforms[0].slug] : null;
+  return primaryPlatform ? primaryPlatform.name : (rowTags[0] || "General");
+}
+
 function exportFilenameStub(prefix, filterLabel, page) {
   const clean = String(filterLabel || "")
     .replace(/[^a-z0-9]+/gi, "-")
@@ -2614,37 +2791,72 @@ function exportFilenameStub(prefix, filterLabel, page) {
   return `${prefix}${clean ? "-" + clean : ""}-page${page}-${date}`;
 }
 
-function exportLinksRows() {
-  return linksExportSnapshot.rows.map((link, idx) => ({
-    "S.No": idx + 1,
+// Single source of truth for a link's export row shape — used by both the
+// per-page Links export (exportLinksRows, below) and the "Export All" Links
+// sheet (exportFullReportExcel) so the two never drift out of sync.
+function linkExportRow(link, sno) {
+  return {
+    "S.No": sno,
+    "Category": categoryForLink(link.code),
     "Short Code": link.code || "",
+    "Campaign": link.campaign_name || "—",
     "Short URL": `${BASE_URL}/api/redirect?id=${link.code}`,
     "Destination URL": link.original || "",
-    "Campaign": link.campaign_name || "—",
     "Tags": linkTagsSorted(link.code).join(", ") || "—",
     "Clicks": link.clicks || 0,
+    "Visitors": dedupeByVisitor(clicksForCode(link.code)).length,
+    "Status": "Active",
     "Created": formatDate(link.created)
-  }));
+  };
 }
 
-function exportUsersRows() {
-  // Column order is priority-based: link identity first (name/short/original
-  // URL), then who the visitor is, then the click analysis fields last.
-  return usersExportSnapshot.rows.map((click, idx) => {
+function exportLinksRows(useFull = false) {
+  const snapshot = linksExportSnapshot;
+  const source = useFull ? snapshot.fullRows : snapshot.rows;
+  const offset = useFull ? 0 : (snapshot.offset || 0);
+  return source.map((link, idx) => linkExportRow(link, offset + idx + 1));
+}
+
+// Note: the app never stores a visitor's raw IP address (see api/redirect.js
+// / device_dedup_migration.sql) — only a salted SHA-256 ip_hash, which is
+// what the visitor card's "IP" field already shows on screen. So the "IP
+// Address" export column below is that same hash, not a literal IP, since
+// that's all the database has. The full ip_hash is included (not truncated
+// like the on-screen "12ab34cd…") since a spreadsheet/PDF is exactly where
+// the untruncated value is useful (e.g. matching two rows as the same
+// network/device).
+//
+// Column order mirrors the on-screen visitor card (see buildVisitorCard):
+// row number, then who the visitor is (Username), then every "web listing"
+// field shown on the card itself (Country, City, IP, Device, Browser, OS,
+// Status, Total Clicks, Click Time), then the owning link's context fields
+// last, since those describe the link rather than the user. A visitor has
+// no real account "Category" — that link-only classification (still used by
+// the Links export) is dropped here in favor of Username, which is what
+// actually identifies each record.
+function exportUsersRows(useFull = false) {
+  const snapshot = usersExportSnapshot;
+  const source = useFull ? snapshot.fullRows : snapshot.rows;
+  const offset = useFull ? 0 : (snapshot.offset || 0);
+  return source.map((click, idx) => {
     const ownerLink = links.find(l => l.code === click.link_code);
     return {
-      "S.No": idx + 1,
-      "Link Name": click.link_code || "",
-      "Short URL": `${BASE_URL}/api/redirect?id=${click.link_code}`,
-      "Original URL": ownerLink ? (ownerLink.original || "") : "",
-      "Visitor ID": click.visitor_id || "",
+      "S.No": offset + idx + 1,
+      "Username": click.visitor_id || "Unknown",
       "Country": click.country || "Unknown",
       "City": click.city || "Unknown",
+      "IP Address": click.ip_hash || "Unknown",
       "Device": click.device || "Unknown",
       "Browser": click.browser || "Unknown",
       "OS": click.os || "Unknown",
       "Status": visitorStatus(click),
-      "Click Time": formatDate(click.created_at)
+      "Total Clicks": visitorClickCount(click),
+      "Click Time": formatDate(click.created_at),
+      "Link Name": click.link_code || "",
+      "Campaign": (ownerLink && ownerLink.campaign_name) || "—",
+      "Tags": linkTagsSorted(click.link_code).join(", ") || "—",
+      "Short URL": `${BASE_URL}/api/redirect?id=${click.link_code}`,
+      "Original URL": ownerLink ? (ownerLink.original || "") : ""
     };
   });
 }
@@ -2668,20 +2880,22 @@ function autoFitColumns(rows, minWidth = 6, maxWidth = 60) {
   });
 }
 
-function autoFitAOAColumns(aoa, minWidths = [], maxWidth = 60) {
-  const colCount = aoa.reduce((max, row) => Math.max(max, row.length), 0);
-  const widths = [];
-  for (let c = 0; c < colCount; c++) {
-    let longest = minWidths[c] || 6;
-    for (const row of aoa) {
-      const val = row[c];
-      if (val === null || val === undefined) continue;
-      const len = String(val).length;
-      if (len > longest) longest = len;
-    }
-    widths.push({ wch: Math.min(longest + 2, maxWidth) });
-  }
-  return widths;
+// Decides each column's Excel number format + alignment purely from its
+// header name. This never touches the values themselves (those come from
+// exportLinksRows/exportUsersRows/etc. untouched) — it only tells Excel how
+// to *display* whatever numeric value is already in the cell, e.g. so a
+// count reads "1,024" instead of "1024" and lines up under its header.
+// Currency/percentage columns aren't in the current data model, but are
+// detected the same way so a future "Amount"/"Conversion Rate" column would
+// automatically get correct formatting without any export code changes.
+function excelColumnFormat(key) {
+  const k = String(key).trim().toLowerCase();
+  if (k === "s.no") return { align: "center", numFmt: "0" };
+  if (/(^|\s)(rate|percent(age)?)(\s|$)/.test(k) || /%/.test(key)) return { align: "right", numFmt: "0.0%" };
+  if (/(^|\s)(amount|price|cost|revenue|fee|total\s*\$)(\s|$)/.test(k)) return { align: "right", numFmt: "$#,##0.00" };
+  if (/\bclicks\b|\bvisitors\b/.test(k)) return { align: "right", numFmt: "#,##0" };
+  if (/\bcreated\b|\bclick time\b|\bdate\b|\bupdated\b/.test(k)) return { align: "center" };
+  return { align: "left" };
 }
 
 // ---- Premium styling for Excel exports ----
@@ -2719,21 +2933,28 @@ function styleHeaderRow(ws, range) {
   }
 }
 
-// Bordered body rows with light zebra banding; numeric columns right-align
-// (matching Excel's own number convention) so header + data agree visually.
-function styleDataRows(ws, range, { rightAlignCols = [] } = {}) {
+// Bordered body rows with light zebra banding. Alignment and number format
+// (thousands separators, percentages, currency, centered dates — see
+// excelColumnFormat) are driven per-column so headers and data always agree
+// visually instead of a single blanket left/right rule for the whole sheet.
+// A cell left empty by the null-safe row copy in buildTableSheet (below)
+// still gets its border/fill so blank values read as clean empty cells
+// rather than gaps in the table.
+function styleDataRows(ws, range, { colFormats = [] } = {}) {
   for (let r = range.s.r + 1; r <= range.e.r; r++) {
     const zebra = (r - range.s.r) % 2 === 0;
     for (let c = range.s.c; c <= range.e.c; c++) {
       const addr = XLSX.utils.encode_cell({ r, c });
-      if (!ws[addr]) continue;
+      if (!ws[addr]) ws[addr] = { t: "s", v: "" };
+      const fmt = colFormats[c] || {};
       const style = {
         font: { sz: 10.5 },
-        alignment: { horizontal: rightAlignCols.includes(c) ? "right" : "left", vertical: "center" },
+        alignment: { horizontal: fmt.align || "left", vertical: "center" },
         border: xlBorder()
       };
       if (zebra) style.fill = { patternType: "solid", fgColor: { rgb: XL_THEME.zebraFill } };
       ws[addr].s = style;
+      if (fmt.numFmt && typeof ws[addr].v === "number") ws[addr].z = fmt.numFmt;
     }
   }
 }
@@ -2754,27 +2975,78 @@ function styleSectionBanner(ws, r, colCount) {
   ws["!rows"][r] = { hpx: 20 };
 }
 
-// Label/value metadata row (e.g. "Destination" | <url>) — bold shaded label
-// cell so it reads as a mini key/value table rather than plain text.
-function styleMetaRow(ws, r) {
-  const labelAddr = XLSX.utils.encode_cell({ r, c: 0 });
-  const valueAddr = XLSX.utils.encode_cell({ r, c: 1 });
-  if (ws[labelAddr]) {
-    ws[labelAddr].s = {
-      font: { bold: true, sz: 10, color: { rgb: XL_THEME.headerFill } },
-      fill: { patternType: "solid", fgColor: { rgb: XL_THEME.labelFill } },
-      alignment: { horizontal: "left", vertical: "center" },
-      border: xlBorder()
-    };
-  }
-  if (ws[valueAddr]) {
-    ws[valueAddr].s = {
-      font: { sz: 10.5 },
-      alignment: { horizontal: "left", vertical: "center" },
-      border: xlBorder()
-    };
-  }
+// ---- Shared builder for every flat, filterable Excel export sheet ----
+// Every Excel export in the app — Links "This page", Links "Export All",
+// Users "This page", and Users "Export All" — now runs through this one
+// function, so all four are guaranteed to look identical: a colored title
+// banner, a quiet generated-on/record-count subtitle, then a bold header
+// band with an autofilter dropdown on every column and a frozen pane that
+// keeps the header visible while scrolling. Column widths, row heights,
+// per-column number formats/alignment, and null handling are all derived
+// from the rows themselves — this function only changes how the data is
+// *displayed*, never the values passed in.
+function buildTableSheet(rows, title) {
+  const headerKeys = Object.keys(rows[0]);
+  const colCount = headerKeys.length;
+  const HEADER_ROW = 3; // 0-indexed: title, subtitle, spacer, then header
+
+  // Null-safe copy: undefined/null become "" so a missing value renders as
+  // a clean blank cell instead of the literal text "null"/"undefined".
+  // Values the app already normalizes (e.g. "Unknown", "—") pass through
+  // unchanged — this only catches genuinely missing fields.
+  const safeRows = rows.map((row) => {
+    const clean = {};
+    headerKeys.forEach((key) => {
+      const v = row[key];
+      clean[key] = (v === null || v === undefined) ? "" : v;
+    });
+    return clean;
+  });
+
+  const ws = {};
+  XLSX.utils.sheet_add_aoa(ws, [[title]], { origin: "A1" });
+  const subtitle = `Generated ${formatDate(new Date().toISOString())} · ${safeRows.length.toLocaleString()} record${safeRows.length === 1 ? "" : "s"}`;
+  XLSX.utils.sheet_add_aoa(ws, [[subtitle]], { origin: "A2" });
+  XLSX.utils.sheet_add_json(ws, safeRows, { origin: `A${HEADER_ROW + 1}` });
+
+  const lastRow = HEADER_ROW + safeRows.length; // 0-indexed last data row
+  ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: lastRow, c: colCount - 1 } });
+  ws["!cols"] = autoFitColumns(safeRows);
+
+  // Autofilter across every column, and a frozen pane so the title,
+  // subtitle, and header band all stay visible while scrolling through data.
+  ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: HEADER_ROW, c: 0 }, e: { r: HEADER_ROW, c: colCount - 1 } }) };
+  ws["!views"] = [{ state: "frozen", ySplit: HEADER_ROW + 1 }];
+  ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } }];
+
+  // Title banner (teal accent), sized up from the default section-banner
+  // height so it reads as the sheet's main title.
+  styleSectionBanner(ws, 0, colCount);
+  ws["!rows"][0] = { hpx: 28 };
+  ws[XLSX.utils.encode_cell({ r: 0, c: 0 })].s.font.sz = 15;
+
+  // Quiet italic subtitle, spacer row, then the header band + every data
+  // row gets an explicit height — tall enough to breathe, not so tall the
+  // sheet feels sparse.
+  const subAddr = XLSX.utils.encode_cell({ r: 1, c: 0 });
+  if (ws[subAddr]) ws[subAddr].s = { font: { italic: true, sz: 10, color: { rgb: XL_THEME.muted } } };
+  ws["!rows"][1] = { hpx: 16 };
+  ws["!rows"][2] = { hpx: 6 };
+  ws["!rows"][HEADER_ROW] = { hpx: 22 };
+  for (let r = 0; r < safeRows.length; r++) ws["!rows"][HEADER_ROW + 1 + r] = { hpx: 19 };
+
+  const headerRange = { s: { r: HEADER_ROW, c: 0 }, e: { r: HEADER_ROW, c: colCount - 1 } };
+  styleHeaderRow(ws, headerRange);
+
+  const colFormats = headerKeys.map(excelColumnFormat);
+  styleDataRows(ws, { s: { r: HEADER_ROW, c: 0 }, e: { r: lastRow, c: colCount - 1 } }, { colFormats });
+
+  return ws;
 }
+
+// Numeric/count columns that should read right-aligned like a spreadsheet
+// rather than left-aligned like text.
+const PDF_RIGHT_ALIGN_COLUMNS = /^(s\.no|clicks|visitors|total clicks)$/i;
 
 function exportToPDF(title, rows, filenameStub) {
   if (!rows.length) { showToast("No rows on this page to export."); return; }
@@ -2782,44 +3054,71 @@ function exportToPDF(title, rows, filenameStub) {
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: "landscape" });
-  const headers = [Object.keys(rows[0])];
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const headerKeys = Object.keys(rows[0]);
+  const headers = [headerKeys];
   const body = rows.map(r => Object.values(r));
 
-  doc.setFontSize(14);
-  doc.text(title, 14, 15);
+  // S.No stays fixed-width. Any "*URL*" column gets capped too — otherwise
+  // long Short/Original URLs (routinely 80-100+ chars) soak up most of the
+  // landscape width and force every other column (Country, Device, Status,
+  // Click Time, etc.) to wrap into multiple lines, which was inflating row
+  // height enough to spill a handful of rows across several PDF pages.
+  // Capped URL cells still wrap internally — that's fine, they're expected
+  // to be long — but they no longer starve the columns around them.
+  const columnStyles = { 0: { cellWidth: 12, halign: "center" } };
+  headerKeys.forEach((key, i) => {
+    if (/url/i.test(key)) columnStyles[i] = { cellWidth: 42 };
+    if (PDF_RIGHT_ALIGN_COLUMNS.test(key)) columnStyles[i] = { ...(columnStyles[i] || {}), halign: "right" };
+  });
+
+  // Colored title band (matches the app's own navy/teal brand — see
+  // XL_THEME in the Excel styling helpers below) so the PDF reads as a
+  // branded report rather than a bare data dump.
+  const drawHeaderBand = () => {
+    doc.setFillColor(27, 33, 64); // navy — XL_THEME.headerFill
+    doc.rect(0, 0, pageWidth, 18, "F");
+    doc.setFillColor(45, 212, 191); // teal accent underline — XL_THEME.accent
+    doc.rect(0, 18, pageWidth, 1.2, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text(title, 14, 12);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    const genLabel = `Generated ${formatDate(new Date().toISOString())} · ${rows.length.toLocaleString()} record${rows.length === 1 ? "" : "s"}`;
+    doc.text(genLabel, pageWidth - 14, 12, { align: "right" });
+    doc.setTextColor(0, 0, 0);
+  };
+  drawHeaderBand();
+
   doc.autoTable({
     head: headers,
     body,
-    startY: 20,
-    styles: { fontSize: 8, cellPadding: 2.5 },
-    headStyles: { fillColor: [40, 40, 60] },
-    columnStyles: { 0: { cellWidth: 12 } },
-    margin: { left: 14, right: 14 }
+    startY: 24,
+    styles: { fontSize: 8, cellPadding: 2.5, lineColor: [215, 220, 229], lineWidth: 0.1, valign: "middle" },
+    headStyles: { fillColor: [27, 33, 64], textColor: [255, 255, 255], fontStyle: "bold", halign: "left" },
+    alternateRowStyles: { fillColor: [244, 246, 251] },
+    columnStyles,
+    margin: { left: 14, right: 14, top: 24, bottom: 16 },
+    didDrawPage: () => {
+      doc.setFontSize(8);
+      doc.setTextColor(130);
+      doc.text("Link Tracker — Export Report", 14, pageHeight - 8);
+      doc.text(`Page ${doc.internal.getCurrentPageInfo().pageNumber}`, pageWidth - 14, pageHeight - 8, { align: "right" });
+      doc.setTextColor(0, 0, 0);
+    }
   });
 
   doc.save(`${filenameStub}.pdf`);
 }
 
-function exportToExcel(sheetName, rows, filenameStub) {
+function exportToExcel(sheetName, rows, filenameStub, title) {
   if (!rows.length) { showToast("No rows on this page to export."); return; }
   if (!window.XLSX) { showToast("Excel export isn't available right now."); return; }
 
-  const ws = XLSX.utils.json_to_sheet(rows);
-  ws["!cols"] = autoFitColumns(rows);
-  // Autofilter + a frozen header row so the "S.No" / column titles stay
-  // visible and sortable once the sheet has more rows than fit on screen.
-  ws["!autofilter"] = { ref: ws["!ref"] };
-  ws["!views"] = [{ state: "frozen", ySplit: 1 }];
-  ws["!rows"] = [{ hpx: 22 }];
-
-  const range = XLSX.utils.decode_range(ws["!ref"]);
-  const headerKeys = Object.keys(rows[0]);
-  const numericCols = headerKeys
-    .map((key, i) => (typeof rows[0][key] === "number" ? i : -1))
-    .filter((i) => i !== -1);
-  styleHeaderRow(ws, range);
-  styleDataRows(ws, range, { rightAlignCols: numericCols });
-
+  const ws = buildTableSheet(rows, title || sheetName);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
   XLSX.writeFile(wb, `${filenameStub}.xlsx`);
@@ -2841,18 +3140,30 @@ function exportFullReportPDF() {
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: "landscape" });
+  const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const marginX = 14;
-  let y = 18;
+  let y;
 
-  doc.setFontSize(16);
-  doc.text("Complete Link & Visitor Report", marginX, y);
-  y += 6;
-  doc.setFontSize(9);
-  doc.setTextColor(130);
-  doc.text(`Generated ${formatDate(new Date().toISOString())} · ${links.length.toLocaleString()} link${links.length === 1 ? "" : "s"}`, marginX, y);
-  doc.setTextColor(0);
-  y += 9;
+  // Colored title band — same navy/teal brand treatment as the per-page
+  // exports, repeated on every new page so section headers never open on a
+  // bare white page.
+  const drawTitleBand = () => {
+    doc.setFillColor(27, 33, 64);
+    doc.rect(0, 0, pageWidth, 20, "F");
+    doc.setFillColor(45, 212, 191);
+    doc.rect(0, 20, pageWidth, 1.2, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
+    doc.text("Complete Link & Visitor Report", marginX, 13);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(`Generated ${formatDate(new Date().toISOString())} · ${links.length.toLocaleString()} link${links.length === 1 ? "" : "s"}`, pageWidth - marginX, 13, { align: "right" });
+    doc.setTextColor(0, 0, 0);
+    y = 27;
+  };
+  drawTitleBand();
 
   const sortedLinks = links.slice().sort((a, b) => new Date(b.created) - new Date(a.created));
 
@@ -2863,7 +3174,7 @@ function exportFullReportPDF() {
     // deciding a fresh page reads better than splitting them apart.
     if (y > pageHeight - 45) {
       doc.addPage();
-      y = 18;
+      drawTitleBand();
     }
 
     doc.setFontSize(11.5);
@@ -2879,11 +3190,13 @@ function exportFullReportPDF() {
       styles: { fontSize: 8, cellPadding: { top: 1.6, bottom: 1.6, left: 2, right: 2 } },
       columnStyles: { 0: { fontStyle: "bold", cellWidth: 26, textColor: [90, 90, 110] } },
       body: [
+        ["Category", categoryForLink(link.code)],
         ["Short URL", `${BASE_URL}/api/redirect?id=${link.code}`],
         ["Destination", link.original || ""],
         ["Campaign", link.campaign_name || "—"],
         ["Tags", linkTagsSorted(link.code).join(", ") || "—"],
         ["Clicks", String(link.clicks || 0)],
+        ["Visitors", String(dedupeByVisitor(linkClicks).length)],
         ["Created", formatDate(link.created)]
       ]
     });
@@ -2899,7 +3212,7 @@ function exportFullReportPDF() {
       doc.autoTable({
         startY: y,
         margin: { left: marginX, right: marginX },
-        head: [["S.No", "Visitor ID", "Country", "City", "Device", "Browser", "OS", "Status", "Click Time"]],
+        head: [["S.No", "Visitor ID", "Country", "City", "Device", "Browser", "OS", "Status", "Total Clicks", "Click Time"]],
         body: linkClicks.map((c, i) => [
           i + 1,
           c.visitor_id || "",
@@ -2909,15 +3222,27 @@ function exportFullReportPDF() {
           c.browser || "Unknown",
           c.os || "Unknown",
           visitorStatus(c),
+          visitorClickCount(c),
           formatDate(c.created_at)
         ]),
-        styles: { fontSize: 7.5, cellPadding: 2 },
-        headStyles: { fillColor: [40, 40, 60] },
-        columnStyles: { 0: { cellWidth: 12 } }
+        styles: { fontSize: 7.5, cellPadding: 2, lineColor: [215, 220, 229], lineWidth: 0.1 },
+        headStyles: { fillColor: [27, 33, 64], textColor: [255, 255, 255], fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [244, 246, 251] },
+        columnStyles: { 0: { cellWidth: 12, halign: "right" }, 8: { halign: "right" } }
       });
       y = doc.lastAutoTable.finalY + 11; // extra breathing room before the next link's section
     }
   });
+
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFontSize(8);
+    doc.setTextColor(130);
+    doc.text("Link Tracker — Export Report", marginX, pageHeight - 8);
+    doc.text(`Page ${p} of ${totalPages}`, pageWidth - marginX, pageHeight - 8, { align: "right" });
+    doc.setTextColor(0, 0, 0);
+  }
 
   doc.save(`complete-report-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
@@ -2926,98 +3251,43 @@ function exportFullReportExcel() {
   if (!links.length) { showToast("No links to export."); return; }
   if (!window.XLSX) { showToast("Excel export isn't available right now."); return; }
 
-  const VISITOR_COLS = 9; // S.No, Visitor ID, Country, City, Device, Browser, OS, Status, Click Time
+  // Every link, regardless of the current page/filter (see exportLinksRows
+  // above for the filtered per-page version) — same ordering as before.
   const sortedLinks = links.slice().sort((a, b) => new Date(b.created) - new Date(a.created));
+  const linkRows = sortedLinks.map((link, idx) => linkExportRow(link, idx + 1));
 
-  const aoa = [];
-  const sectionBannerRows = []; // row indices to merge + style as a section banner
-  const metaRows = [];          // row indices of label/value metadata rows
-  const subHeaderRows = [];     // row indices of each visitor sub-table header
-
-  aoa.push(["Complete Link & Visitor Report"]);
-  aoa.push([`Generated ${formatDate(new Date().toISOString())}`, `${sortedLinks.length} link(s)`]);
-  aoa.push([]);
-
-  sortedLinks.forEach((link, idx) => {
-    const linkClicks = clicksForCode(link.code);
-
-    sectionBannerRows.push(aoa.length);
-    aoa.push([`${idx + 1}. ${link.code}`]);
-
-    [
-      ["Short URL", `${BASE_URL}/api/redirect?id=${link.code}`],
-      ["Destination", link.original || ""],
-      ["Campaign", link.campaign_name || "—"],
-      ["Tags", linkTagsSorted(link.code).join(", ") || "—"],
-      ["Clicks", link.clicks || 0],
-      ["Created", formatDate(link.created)]
-    ].forEach((row) => { metaRows.push(aoa.length); aoa.push(row); });
-
-    aoa.push([]);
-
-    // The visitor sub-table header is always shown now, even with zero
-    // clicks, so every link's section has the same 9-column shape instead
-    // of some sections silently losing their columns.
-    subHeaderRows.push(aoa.length);
-    aoa.push(["S.No", "Visitor ID", "Country", "City", "Device", "Browser", "OS", "Status", "Click Time"]);
-
-    if (linkClicks.length === 0) {
-      aoa.push(["—", "No visitor activity recorded for this link."]);
-    } else {
-      linkClicks.forEach((c, i) => {
-        aoa.push([
-          i + 1,
-          c.visitor_id || "",
-          c.country || "Unknown",
-          c.city || "Unknown",
-          c.device || "Unknown",
-          c.browser || "Unknown",
-          c.os || "Unknown",
-          visitorStatus(c),
-          formatDate(c.created_at)
-        ]);
+  // Every visitor across every link, flattened into one table with the
+  // owning link's code/campaign carried on each row for context — the same
+  // underlying click data as before, just laid out as a normal table
+  // instead of a separate nested block per link.
+  const visitorRows = [];
+  sortedLinks.forEach((link) => {
+    clicksForCode(link.code).forEach((c) => {
+      visitorRows.push({
+        "S.No": visitorRows.length + 1,
+        "Link Code": link.code || "",
+        "Campaign": link.campaign_name || "—",
+        "Visitor ID": c.visitor_id || "",
+        "Country": c.country || "Unknown",
+        "City": c.city || "Unknown",
+        "Device": c.device || "Unknown",
+        "Browser": c.browser || "Unknown",
+        "OS": c.os || "Unknown",
+        "Status": visitorStatus(c),
+        "Total Clicks": visitorClickCount(c),
+        "Click Time": formatDate(c.created_at)
       });
-    }
-    aoa.push([]); // single spacer row between link sections
+    });
   });
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  // This sheet mixes three shapes in the same columns: a 1-column section
-  // banner, a 2-column label/value block per link, and a 9-column visitor
-  // sub-table. Widths are computed from actual content (banner/title rows
-  // excluded — they're meant to span the row, not force column A wide).
-  ws["!cols"] = autoFitAOAColumns(aoa.slice(3), [8]);
-
-  ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: VISITOR_COLS - 1 } }];
-
-  // Title banner (styled first, then given extra height + larger font so it
-  // reads as the report's main title rather than just another section banner)
-  styleSectionBanner(ws, 0, VISITOR_COLS);
-  ws["!rows"][0] = { hpx: 28 };
-  ws[XLSX.utils.encode_cell({ r: 0, c: 0 })].s.font.sz = 15;
-  // Subtitle (generated date / link count) — quiet, not banded
-  ["A2", "B2"].forEach((addr) => {
-    if (ws[addr]) ws[addr].s = { font: { italic: true, sz: 10, color: { rgb: XL_THEME.muted } } };
-  });
-
-  sectionBannerRows.forEach((r) => {
-    ws["!merges"].push({ s: { r, c: 0 }, e: { r, c: VISITOR_COLS - 1 } });
-    styleSectionBanner(ws, r, VISITOR_COLS);
-  });
-  metaRows.forEach((r) => styleMetaRow(ws, r));
-  subHeaderRows.forEach((r) => {
-    styleHeaderRow(ws, { s: { r, c: 0 }, e: { r, c: VISITOR_COLS - 1 } });
-    // Style that link's visitor data rows (or its "no activity" row) right
-    // after its header, up to the next blank spacer row.
-    let dataEnd = r + 1;
-    while (aoa[dataEnd] && aoa[dataEnd].length > 0) dataEnd++;
-    if (dataEnd > r + 1) {
-      styleDataRows(ws, { s: { r, c: 0 }, e: { r: dataEnd - 1, c: VISITOR_COLS - 1 } }, { rightAlignCols: [0] });
-    }
-  });
-
+  // Two sheets, one workbook — both built by the exact same buildTableSheet
+  // function as the "This page" exports, so title banner, header styling,
+  // autofilter, frozen pane, column widths, and number formats all match.
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Full Report");
+  XLSX.utils.book_append_sheet(wb, buildTableSheet(linkRows, "All Tracking Links"), "Links");
+  if (visitorRows.length) {
+    XLSX.utils.book_append_sheet(wb, buildTableSheet(visitorRows, "All Visitors"), "Visitors");
+  }
   XLSX.writeFile(wb, `complete-report-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
@@ -3027,14 +3297,149 @@ function exportLinks(format) {
   const rows = exportLinksRows();
   const stub = exportFilenameStub("tracking-links", linksExportSnapshot.filterLabel, linksPage);
   if (format === "pdf") exportToPDF("All Tracking Links", rows, stub);
-  else exportToExcel("Tracking Links", rows, stub);
+  else exportToExcel("Tracking Links", rows, stub, "All Tracking Links");
+}
+
+// ---- Users listing export (PDF): one clearly-separated record per user ----
+// Unlike the Links table (one row per link, all columns comfortably fit),
+// a full user record has 15 fields including two long URLs and a full IP
+// hash — cramming that into one flat table row either truncates fields or
+// forces columns to be dropped. Instead each user gets their own bordered
+// "record" (S.No + Username banner, then a two-column label/value grid) in
+// the PDF, using the app's navy/teal brand. The Excel version (below) uses
+// a flat, filterable table instead — see buildTableSheet.
+
+function exportUsersToPDF(rows, title, filenameStub) {
+  if (!rows.length) { showToast("No users to export."); return; }
+  if (!window.jspdf || !window.jspdf.jsPDF) { showToast("PDF export isn't available right now."); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: "landscape" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginX = 14;
+  const contentWidth = pageWidth - marginX * 2;
+  let y;
+
+  const drawTitleBand = () => {
+    doc.setFillColor(27, 33, 64); // navy — XL_THEME.headerFill
+    doc.rect(0, 0, pageWidth, 20, "F");
+    doc.setFillColor(45, 212, 191); // teal accent underline — XL_THEME.accent
+    doc.rect(0, 20, pageWidth, 1.2, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
+    doc.text(title, marginX, 13);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(`Generated ${formatDate(new Date().toISOString())} · ${rows.length.toLocaleString()} record${rows.length === 1 ? "" : "s"}`, pageWidth - marginX, 13, { align: "right" });
+    doc.setTextColor(0, 0, 0);
+    y = 28;
+  };
+  drawTitleBand();
+
+  rows.forEach((row) => {
+    // Each record needs room for its banner + ~7 detail lines before a page
+    // break reads better than splitting a user's data across two pages.
+    if (y > pageHeight - 55) {
+      doc.addPage();
+      drawTitleBand();
+    }
+
+    // Record banner — teal, carries the (now correctly sequential) S.No and
+    // the Username so a record is identifiable at a glance without having
+    // to open the detail grid underneath it.
+    doc.setFillColor(45, 212, 191);
+    doc.rect(marginX, y - 5.5, contentWidth, 8, "F");
+    doc.setTextColor(15, 23, 42);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10.5);
+    doc.text(`#${row["S.No"]}   ${row["Username"]}`, marginX + 3, y);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "normal");
+    y += 5.5;
+
+    // Two-column label/value grid for every remaining "web listing" field —
+    // nothing gets dropped or truncated since the layout is vertical, not a
+    // single crammed-wide row.
+    const entries = Object.entries(row).filter(([k]) => k !== "S.No" && k !== "Username");
+    const half = contentWidth / 2;
+    const body = [];
+    for (let i = 0; i < entries.length; i += 2) {
+      const [k1, v1] = entries[i];
+      const pair = entries[i + 1];
+      body.push([k1, String(v1 ?? ""), pair ? pair[0] : "", pair ? String(pair[1] ?? "") : ""]);
+    }
+
+    doc.autoTable({
+      startY: y,
+      margin: { left: marginX, right: marginX },
+      theme: "plain",
+      styles: { fontSize: 8, cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 }, overflow: "linebreak" },
+      columnStyles: {
+        0: { fontStyle: "bold", cellWidth: 26, textColor: [90, 90, 110] },
+        1: { cellWidth: half - 26 },
+        2: { fontStyle: "bold", cellWidth: 26, textColor: [90, 90, 110] },
+        3: { cellWidth: half - 26 }
+      },
+      body
+    });
+    y = doc.lastAutoTable.finalY;
+
+    // Clear separator between this record and the next.
+    y += 4;
+    doc.setDrawColor(215, 220, 229);
+    doc.setLineWidth(0.3);
+    doc.line(marginX, y, pageWidth - marginX, y);
+    y += 8;
+  });
+
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFontSize(8);
+    doc.setTextColor(130);
+    doc.text("Link Tracker — Export Report", marginX, pageHeight - 8);
+    doc.text(`Page ${p} of ${totalPages}`, pageWidth - marginX, pageHeight - 8, { align: "right" });
+    doc.setTextColor(0, 0, 0);
+  }
+
+  doc.save(`${filenameStub}.pdf`);
+}
+
+function exportUsersToExcel(rows, title, filenameStub, sheetName) {
+  if (!rows.length) { showToast("No users to export."); return; }
+  if (!window.XLSX) { showToast("Excel export isn't available right now."); return; }
+
+  // exportUsers() passes the "This page" rows here for a plain excel export
+  // and the "every page" rows here for all-excel — both go through the same
+  // buildTableSheet used by the Links exports, so "This page" and "Export
+  // All" are always styled identically.
+  const ws = buildTableSheet(rows, title);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, `${filenameStub}.xlsx`);
 }
 
 function exportUsers(format) {
-  const rows = exportUsersRows();
-  const stub = exportFilenameStub("user-listings", usersExportSnapshot.filterLabel, usersPage);
-  if (format === "pdf") exportToPDF("All User Listings", rows, stub);
-  else exportToExcel("User Listings", rows, stub);
+  // "all-*" = every user matching the current filters, across every page
+  // (not just this page) — mirrors the Links page's "Export All" split.
+  // S.No always comes from exportUsersRows' offset+index math, so per-page
+  // exports continue the running count and "all" exports restart at 1 and
+  // number straight through — never duplicated, never out of order.
+  const isAll = format === "all-pdf" || format === "all-excel";
+  const rows = exportUsersRows(isAll);
+  if (!rows.length) { showToast("No users to export."); return; }
+
+  const stub = isAll
+    ? exportFilenameStub("user-listings-all", usersExportSnapshot.filterLabel, "all")
+    : exportFilenameStub("user-listings", usersExportSnapshot.filterLabel, usersPage);
+
+  if (format === "pdf" || format === "all-pdf") {
+    exportUsersToPDF(rows, "All User Listings", stub);
+  } else {
+    exportUsersToExcel(rows, "All User Listings", stub, "User Listings");
+  }
 }
 
 // ==========================================

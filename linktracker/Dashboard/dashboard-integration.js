@@ -27,7 +27,7 @@
   // Where the full Link Tracker app lives relative to this page. Adjust
   // this one constant if you deploy the two apps at a different relative
   // path to each other.
-  const LINK_TRACKER_URL = "../link-tracker/index.html";
+  const LINK_TRACKER_URL = "../index.html";
 
   // ---------- Sidebar / quick-action navigation ----------
   // OceanGlass ships as a single overview page — none of the sidebar items

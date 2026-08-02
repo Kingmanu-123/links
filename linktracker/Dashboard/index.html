@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OceanGlass Dashboard</title>
+  <meta name="description" content="OceanGlass – Premium link management dashboard with real-time analytics, campaign tracking, and user insights." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Underwater Background Image -->
+  <div class="ocean-bg"></div>
+
+  <!-- App Shell -->
+  <div class="app-shell">
+
+    <!-- ===== SIDEBAR ===== -->
+    <!-- Note: the collapse/expand toggle lives OUTSIDE .sidebar-inner (which is what
+         clips/scrolls content) so it never gets clipped away when the sidebar is
+         collapsed to icons-only. This is what previously made it impossible to
+         reopen the sidebar after collapsing it. -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-inner">
+        <!-- Logo -->
+        <div class="sidebar-logo">
+          <div class="logo-icon">
+            <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+              <circle cx="14" cy="14" r="14" fill="url(#logoGrad)" opacity="0.9"/>
+              <path d="M8 14c2-4 10-4 12 0s-10 8-12 0z" fill="white" opacity="0.9"/>
+              <defs>
+                <linearGradient id="logoGrad" x1="0" y1="0" x2="28" y2="28">
+                  <stop offset="0%" stop-color="#00d4ff"/>
+                  <stop offset="100%" stop-color="#0066cc"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <div class="logo-text">
+            <span class="logo-name">OceanGlass</span>
+            <span class="logo-sub">Dashboard</span>
+          </div>
+        </div>
+
+      <!-- Nav -->
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" id="nav-overview">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor"/>
+              <rect x="11" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.6"/>
+              <rect x="1" y="11" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.6"/>
+              <rect x="11" y="11" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.6"/>
+            </svg>
+          </span>
+          <span class="nav-label">Overview</span>
+        </a>
+        <a href="#" class="nav-item" id="nav-links">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M7.5 10.5a4.5 4.5 0 0 0 6.364 0l1.5-1.5a4.5 4.5 0 0 0-6.364-6.364L7.75 3.886" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M10.5 7.5a4.5 4.5 0 0 0-6.364 0l-1.5 1.5a4.5 4.5 0 0 0 6.364 6.364l1.24-1.24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span class="nav-label">Links</span>
+        </a>
+        <a href="#" class="nav-item" id="nav-campaigns">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <circle cx="9" cy="9" r="7.5" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M9 5v4l2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span class="nav-label">Campaigns</span>
+        </a>
+        <a href="#" class="nav-item" id="nav-analytics">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <rect x="1" y="10" width="3" height="7" rx="1" fill="currentColor"/>
+              <rect x="7" y="6" width="3" height="11" rx="1" fill="currentColor"/>
+              <rect x="13" y="2" width="3" height="15" rx="1" fill="currentColor"/>
+            </svg>
+          </span>
+          <span class="nav-label">Analytics</span>
+        </a>
+        <a href="#" class="nav-item" id="nav-users">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <circle cx="9" cy="6" r="3.5" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M2 16c0-3.314 3.134-6 7-6s7 2.686 7 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span class="nav-label">Users</span>
+        </a>
+        <a href="#" class="nav-item" id="nav-platforms">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <rect x="1" y="1" width="7" height="5" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+              <rect x="10" y="1" width="7" height="5" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+              <rect x="1" y="9" width="7" height="5" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+              <rect x="10" y="9" width="7" height="5" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+          </span>
+          <span class="nav-label">Platforms</span>
+        </a>
+        <a href="#" class="nav-item" id="nav-tags">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M9.5 2.5L16 9l-7 7-6.5-6.5V2.5H9.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+              <circle cx="5" cy="5.5" r="1" fill="currentColor"/>
+            </svg>
+          </span>
+          <span class="nav-label">Tags</span>
+        </a>
+        <a href="#" class="nav-item" id="nav-settings">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <circle cx="9" cy="9" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M9 1v2M9 15v2M1 9h2M15 9h2M3.05 3.05l1.41 1.41M13.54 13.54l1.41 1.41M3.05 14.95l1.41-1.41M13.54 4.46l1.41-1.41" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span class="nav-label">Settings</span>
+        </a>
+        <a href="#" class="nav-item" id="nav-activity">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <polyline points="1,9 4,3 7,13 10,5 13,11 16,7 17,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+          </span>
+          <span class="nav-label">Activity</span>
+        </a>
+      </nav>
+
+      <!-- Plan Badge -->
+      <div class="sidebar-plan">
+        <div class="plan-header">
+          <span class="plan-label">Plan</span>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M7 1l1.5 4H13l-3.5 2.5 1.5 4L7 9l-4 2.5 1.5-4L1 5h4.5L7 1z" fill="#f59e0b"/>
+          </svg>
+        </div>
+        <div class="plan-name">Pro Ocean</div>
+        <div class="plan-usage-row">
+          <span class="plan-usage-label">Usage</span>
+          <span class="plan-usage-pct">78%</span>
+        </div>
+        <div class="plan-bar">
+          <div class="plan-bar-fill" style="width:78%"></div>
+        </div>
+        <button class="btn-upgrade">Upgrade Plan</button>
+      </div>
+      </div><!-- /.sidebar-inner -->
+
+      <!-- Collapse/expand toggle — deliberately outside .sidebar-inner so it's
+           never clipped by the sidebar's overflow:hidden, at any collapsed width. -->
+      <button class="sidebar-toggle" id="sidebarToggle" aria-label="Collapse sidebar">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M10 4L6 8L10 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </aside>
+
+    <!-- Mobile drawer backdrop -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- ===== MAIN ===== -->
+    <main class="main-content">
+
+      <!-- Top Header -->
+      <header class="top-header">
+        <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Open menu">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M2 4.5h14M2 9h14M2 13.5h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <div class="header-left">
+          <h1 class="welcome-title">Welcome back, Barath! 👋</h1>
+          <p class="welcome-sub">Here's what's happening with your links today.</p>
+        </div>
+        <div class="header-center">
+          <div class="search-bar">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M11 11L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <input type="text" id="searchInput" placeholder="Search links, campaigns, users..." />
+          </div>
+        </div>
+        <div class="header-right">
+          <button class="icon-btn" id="notifBtn">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M10 2a6 6 0 0 0-6 6v3l-1.5 2.5h15L16 11V8a6 6 0 0 0-6-6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+              <path d="M8 16a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+            <span class="notif-dot"></span>
+          </button>
+          <button class="icon-btn" id="msgBtn">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <rect x="2" y="4" width="16" height="12" rx="2.5" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M2 7l8 5 8-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+          <div class="user-profile" id="userProfile">
+            <div class="user-avatar">
+              <img src="https://i.pravatar.cc/40?img=47" alt="Barath MK" onerror="this.style.display='none'" />
+              <span class="avatar-fallback">BM</span>
+            </div>
+            <div class="user-info">
+              <span class="user-name">Barath MK</span>
+              <span class="user-role">Admin</span>
+            </div>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </div>
+      </header>
+
+      <!-- Date Range -->
+      <div class="date-range-bar">
+        <div class="date-range-btn" id="dateRangeBtn">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="1" y="3" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.3"/>
+            <path d="M1 7h14" stroke="currentColor" stroke-width="1.3"/>
+            <path d="M5 1v4M11 1v4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>
+          <span>May 24 – May 30, 2025</span>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Stats Cards Row -->
+      <div class="stats-row">
+        <!-- Total Links -->
+        <div class="stat-card" id="statCard1">
+          <div class="stat-card-header">
+            <div class="stat-icon stat-icon-blue">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M8.5 11.5a4.5 4.5 0 0 0 6.364 0l1.5-1.5a4.5 4.5 0 0 0-6.364-6.364L8.75 4.886" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                <path d="M11.5 8.5a4.5 4.5 0 0 0-6.364 0l-1.5 1.5a4.5 4.5 0 0 0 6.364 6.364l1.24-1.24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <span class="stat-label">Total Links</span>
+            <button class="more-btn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="3" r="1" fill="currentColor"/>
+                <circle cx="8" cy="8" r="1" fill="currentColor"/>
+                <circle cx="8" cy="13" r="1" fill="currentColor"/>
+              </svg>
+            </button>
+          </div>
+          <div class="stat-value" data-target="2480">0</div>
+          <div class="stat-change positive">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M6 9V3M6 3L3 6M6 3l3 3" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            18.2% from last month
+          </div>
+          <canvas class="mini-chart" id="chart1" width="200" height="50"></canvas>
+        </div>
+
+        <!-- Total Views -->
+        <div class="stat-card" id="statCard2">
+          <div class="stat-card-header">
+            <div class="stat-icon stat-icon-cyan">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M1 10s3.5-7 9-7 9 7 9 7-3.5 7-9 7-9-7-9-7z" stroke="currentColor" stroke-width="1.5"/>
+                <circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="1.5"/>
+              </svg>
+            </div>
+            <span class="stat-label">Total Views</span>
+            <button class="more-btn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="3" r="1" fill="currentColor"/>
+                <circle cx="8" cy="8" r="1" fill="currentColor"/>
+                <circle cx="8" cy="13" r="1" fill="currentColor"/>
+              </svg>
+            </button>
+          </div>
+          <div class="stat-value" data-target="128600" data-suffix="K" data-divisor="1000">0</div>
+          <div class="stat-change positive">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M6 9V3M6 3L3 6M6 3l3 3" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            24.7% from last month
+          </div>
+          <canvas class="mini-chart" id="chart2" width="200" height="50"></canvas>
+        </div>
+
+        <!-- Total Clicks -->
+        <div class="stat-card" id="statCard3">
+          <div class="stat-card-header">
+            <div class="stat-icon stat-icon-teal">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M6 3l11 7.5-11 7.5V3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <span class="stat-label">Total Clicks</span>
+            <button class="more-btn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="3" r="1" fill="currentColor"/>
+                <circle cx="8" cy="8" r="1" fill="currentColor"/>
+                <circle cx="8" cy="13" r="1" fill="currentColor"/>
+              </svg>
+            </button>
+          </div>
+          <div class="stat-value" data-target="89400" data-suffix="K" data-divisor="1000">0</div>
+          <div class="stat-change positive">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M6 9V3M6 3L3 6M6 3l3 3" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            16.3% from last month
+          </div>
+          <canvas class="mini-chart" id="chart3" width="200" height="50"></canvas>
+        </div>
+
+        <!-- Active Users -->
+        <div class="stat-card" id="statCard4">
+          <div class="stat-card-header">
+            <div class="stat-icon stat-icon-purple">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="7" r="3.5" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M3 18c0-3.866 3.134-7 7-7s7 3.134 7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                <circle cx="15" cy="7" r="2" stroke="currentColor" stroke-width="1.3"/>
+                <path d="M17 15c0-2.209-1.343-4-3-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <span class="stat-label">Active Users</span>
+            <button class="more-btn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="3" r="1" fill="currentColor"/>
+                <circle cx="8" cy="8" r="1" fill="currentColor"/>
+                <circle cx="8" cy="13" r="1" fill="currentColor"/>
+              </svg>
+            </button>
+          </div>
+          <div class="stat-value" data-target="1842">0</div>
+          <div class="stat-change positive">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M6 9V3M6 3L3 6M6 3l3 3" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            12.5% from last month
+          </div>
+          <canvas class="mini-chart" id="chart4" width="200" height="50"></canvas>
+        </div>
+      </div>
+
+      <!-- Middle Row -->
+      <div class="mid-row">
+
+        <!-- Recent Links -->
+        <div class="glass-card recent-links-card">
+          <div class="card-header">
+            <h2 class="card-title">Recent Links</h2>
+            <a href="#" class="view-all-btn">View all
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </a>
+          </div>
+          <div class="links-list">
+            <div class="link-item">
+              <div class="link-icon-wrap"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5a3.5 3.5 0 0 0 5 0l1.5-1.5a3.5 3.5 0 0 0-5-5L6.75 4.24" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M9.5 6.5a3.5 3.5 0 0 0-5 0L3 8a3.5 3.5 0 0 0 5 5l1.24-1.24" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></div>
+              <div class="link-info"><span class="link-name">Landing Page</span><span class="link-url">oceanglass.io/abc123</span></div>
+              <div class="link-views"><span class="views-num">245</span><span class="views-lbl">Views</span></div>
+              <span class="link-time">2h ago</span>
+            </div>
+            <div class="link-item">
+              <div class="link-icon-wrap"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5a3.5 3.5 0 0 0 5 0l1.5-1.5a3.5 3.5 0 0 0-5-5L6.75 4.24" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M9.5 6.5a3.5 3.5 0 0 0-5 0L3 8a3.5 3.5 0 0 0 5 5l1.24-1.24" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></div>
+              <div class="link-info"><span class="link-name">Promo Video</span><span class="link-url">oceanglass.io/def456</span></div>
+              <div class="link-views"><span class="views-num">189</span><span class="views-lbl">Views</span></div>
+              <span class="link-time">5h ago</span>
+            </div>
+            <div class="link-item">
+              <div class="link-icon-wrap"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5a3.5 3.5 0 0 0 5 0l1.5-1.5a3.5 3.5 0 0 0-5-5L6.75 4.24" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M9.5 6.5a3.5 3.5 0 0 0-5 0L3 8a3.5 3.5 0 0 0 5 5l1.24-1.24" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></div>
+              <div class="link-info"><span class="link-name">Product Launch</span><span class="link-url">oceanglass.io/ghi789</span></div>
+              <div class="link-views"><span class="views-num">156</span><span class="views-lbl">Views</span></div>
+              <span class="link-time">1d ago</span>
+            </div>
+            <div class="link-item">
+              <div class="link-icon-wrap"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5a3.5 3.5 0 0 0 5 0l1.5-1.5a3.5 3.5 0 0 0-5-5L6.75 4.24" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M9.5 6.5a3.5 3.5 0 0 0-5 0L3 8a3.5 3.5 0 0 0 5 5l1.24-1.24" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></div>
+              <div class="link-info"><span class="link-name">Banner Design</span><span class="link-url">oceanglass.io/jkl012</span></div>
+              <div class="link-views"><span class="views-num">98</span><span class="views-lbl">Views</span></div>
+              <span class="link-time">2d ago</span>
+            </div>
+            <div class="link-item">
+              <div class="link-icon-wrap"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5a3.5 3.5 0 0 0 5 0l1.5-1.5a3.5 3.5 0 0 0-5-5L6.75 4.24" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M9.5 6.5a3.5 3.5 0 0 0-5 0L3 8a3.5 3.5 0 0 0 5 5l1.24-1.24" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></div>
+              <div class="link-info"><span class="link-name">Affiliate Link</span><span class="link-url">oceanglass.io/mno345</span></div>
+              <div class="link-views"><span class="views-num">75</span><span class="views-lbl">Views</span></div>
+              <span class="link-time">3d ago</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Top Platforms -->
+        <div class="glass-card top-platforms-card">
+          <div class="card-header">
+            <h2 class="card-title">Top Platforms</h2>
+            <div class="period-select">
+              <span>This Month</span>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+              </svg>
+            </div>
+          </div>
+          <div class="platforms-list">
+            <div class="platform-item">
+              <div class="platform-icon instagram">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                  <rect x="2" y="2" width="14" height="14" rx="4" stroke="url(#ig)" stroke-width="1.5"/>
+                  <circle cx="9" cy="9" r="3.5" stroke="url(#ig)" stroke-width="1.5"/>
+                  <circle cx="13" cy="5" r="0.8" fill="url(#ig)"/>
+                  <defs><linearGradient id="ig" x1="2" y1="2" x2="16" y2="16"><stop offset="0%" stop-color="#f09433"/><stop offset="50%" stop-color="#e1306c"/><stop offset="100%" stop-color="#833ab4"/></linearGradient></defs>
+                </svg>
+              </div>
+              <div class="platform-info">
+                <span class="platform-name">Instagram</span>
+                <div class="platform-bar-wrap">
+                  <div class="platform-bar"><div class="platform-bar-fill" style="width:45%; background: linear-gradient(90deg,#4f8ef7,#00d4ff)"></div></div>
+                </div>
+              </div>
+              <span class="platform-pct">45%</span>
+            </div>
+            <div class="platform-item">
+              <div class="platform-icon facebook">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                  <circle cx="9" cy="9" r="7" fill="#1877f2"/>
+                  <path d="M11 6H9.5C9.22 6 9 6.22 9 6.5V8H11L10.7 10H9V16H7V10H5.5V8H7V6.5C7 5.12 8.12 4 9.5 4H11V6z" fill="white"/>
+                </svg>
+              </div>
+              <div class="platform-info">
+                <span class="platform-name">Facebook</span>
+                <div class="platform-bar-wrap">
+                  <div class="platform-bar"><div class="platform-bar-fill" style="width:28%; background: linear-gradient(90deg,#4f8ef7,#00d4ff)"></div></div>
+                </div>
+              </div>
+              <span class="platform-pct">28%</span>
+            </div>
+            <div class="platform-item">
+              <div class="platform-icon twitter">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                  <circle cx="9" cy="9" r="7" fill="#1da1f2"/>
+                  <path d="M13.5 6.2a4 4 0 0 1-1.1.3A2 2 0 0 0 13.3 5a4 4 0 0 1-1.2.5A2 2 0 0 0 8.6 7.2 5.7 5.7 0 0 1 4.5 5.3a2 2 0 0 0 .6 2.7 2 2 0 0 1-.9-.2 2 2 0 0 0 1.6 2 2 2 0 0 1-.9 0A2 2 0 0 0 6.7 11a4 4 0 0 1-2.9.8A5.7 5.7 0 0 0 7 13c3.7 0 5.8-3.1 5.8-5.8V7A4.1 4.1 0 0 0 13.5 6.2z" fill="white"/>
+                </svg>
+              </div>
+              <div class="platform-info">
+                <span class="platform-name">Twitter</span>
+                <div class="platform-bar-wrap">
+                  <div class="platform-bar"><div class="platform-bar-fill" style="width:17%; background: linear-gradient(90deg,#4f8ef7,#00d4ff)"></div></div>
+                </div>
+              </div>
+              <span class="platform-pct">17%</span>
+            </div>
+            <div class="platform-item">
+              <div class="platform-icon linkedin">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                  <rect x="1" y="1" width="16" height="16" rx="3" fill="#0077b5"/>
+                  <rect x="4" y="7" width="2" height="7" fill="white"/>
+                  <circle cx="5" cy="5" r="1.2" fill="white"/>
+                  <path d="M9 7v7M9 9c0-1.1.9-2 2-2a2 2 0 0 1 2 2v5" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </div>
+              <div class="platform-info">
+                <span class="platform-name">LinkedIn</span>
+                <div class="platform-bar-wrap">
+                  <div class="platform-bar"><div class="platform-bar-fill" style="width:10%; background: linear-gradient(90deg,#4f8ef7,#00d4ff)"></div></div>
+                </div>
+              </div>
+              <span class="platform-pct">10%</span>
+            </div>
+          </div>
+
+          <!-- Best Performing -->
+          <div class="best-performing">
+            <div class="best-icon">
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                <path d="M11 2l2 6h6l-5 3.5 2 6L11 14l-5 3.5 2-6L3 8h6L11 2z" fill="#f59e0b" opacity="0.9"/>
+              </svg>
+            </div>
+            <div class="best-info">
+              <span class="best-label">Best Performing Link</span>
+              <span class="best-url">oceanglass.io/abc123</span>
+            </div>
+            <div class="best-views">
+              <span class="best-views-num">48.6K</span>
+              <span class="best-views-lbl">Views</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Overview Analytics -->
+        <div class="glass-card analytics-card">
+          <div class="card-header">
+            <h2 class="card-title">Overview Analytics</h2>
+            <div class="period-select">
+              <span>This Month</span>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+              </svg>
+            </div>
+          </div>
+          <canvas id="overviewChart" width="400" height="160"></canvas>
+          <div class="analytics-mini-stats">
+            <div class="mini-stat">
+              <span class="mini-stat-label">Today's Views</span>
+              <span class="mini-stat-val">4,862</span>
+              <span class="mini-stat-change positive">↑ 15.3%</span>
+            </div>
+            <div class="mini-stat">
+              <span class="mini-stat-label">This Week</span>
+              <span class="mini-stat-val">28.4K</span>
+              <span class="mini-stat-change positive">↑ 18.6%</span>
+            </div>
+            <div class="mini-stat">
+              <span class="mini-stat-label">This Month</span>
+              <span class="mini-stat-val">128.6K</span>
+              <span class="mini-stat-change positive">↑ 24.7%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Row -->
+      <div class="bottom-row">
+        <!-- Recent Activity -->
+        <div class="glass-card activity-card">
+          <div class="card-header">
+            <h2 class="card-title">Recent Activity</h2>
+          </div>
+          <div class="activity-item">
+            <div class="activity-avatar">
+              <img src="https://i.pravatar.cc/36?img=47" alt="Barath MK" onerror="this.style.display='none'" />
+              <span class="act-avatar-fallback">BM</span>
+            </div>
+            <div class="activity-info">
+              <span class="activity-desc"><strong>Barath MK</strong> created a new link</span>
+              <span class="activity-url">oceanglass.io/new/123</span>
+            </div>
+            <span class="activity-time">2m ago</span>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions-row">
+          <button class="quick-action-btn" id="qa-create-link">
+            <div class="qa-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M11 7v8M7 11h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+            <span>Create Link</span>
+          </button>
+          <button class="quick-action-btn" id="qa-create-campaign">
+            <div class="qa-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M7 11c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M11 7v4l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+            <span>Create Campaign</span>
+          </button>
+          <button class="quick-action-btn" id="qa-add-user">
+            <div class="qa-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="9" cy="8" r="3.5" stroke="currentColor" stroke-width="1.5"/><path d="M2 19c0-3.866 3.134-7 7-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M17 14v6M14 17h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+            <span>Add User</span>
+          </button>
+          <button class="quick-action-btn" id="qa-view-reports">
+            <div class="qa-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="2" y="2" width="18" height="18" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M6 14l3-4 3 2 4-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <span>View Reports</span>
+          </button>
+          <button class="quick-action-btn" id="qa-settings">
+            <div class="qa-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M11 2v2M11 18v2M2 11h2M18 11h2M4.22 4.22l1.42 1.42M16.36 16.36l1.42 1.42M4.22 17.78l1.42-1.42M16.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+            <span>Settings</span>
+          </button>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+  <script src="linktracker-data.js"></script>
+  <script src="dashboard-integration.js"></script>
+</body>
+</html>

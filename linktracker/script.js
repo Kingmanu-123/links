@@ -63,14 +63,14 @@ const createPanel = document.querySelector(".create-panel");
 
 // Fixed platform catalog (mirrors `social_platforms` seed rows — matched by slug)
 const SOCIAL_PLATFORMS = [
-  { slug: "facebook",  name: "Facebook",     color: "#3b82f6", initials: "Fb" },
-  { slug: "instagram", name: "Instagram",    color: "#ec4899", initials: "Ig" },
-  { slug: "twitter",   name: "X / Twitter",  color: "#38bdf8", initials: "X" },
-  { slug: "linkedin",  name: "LinkedIn",     color: "#0ea5e9", initials: "In" },
-  { slug: "youtube",   name: "YouTube",      color: "#f87171", initials: "Yt" },
-  { slug: "whatsapp",  name: "WhatsApp",     color: "#34d399", initials: "Wa" },
-  { slug: "telegram",  name: "Telegram",     color: "#5eead4", initials: "Tg" },
-  { slug: "snapchat",  name: "Snapchat",     color: "#fbbf24", initials: "Sc" }
+  { slug: "facebook",  name: "Facebook",     color: "#1877F2", initials: "Fb" },
+  { slug: "instagram", name: "Instagram",    color: "linear-gradient(135deg, #FEDA75, #FA7E1E, #D62976, #962FBF, #4F5BD5)", initials: "Ig" },
+  { slug: "twitter",   name: "X / Twitter",  color: "#000000", initials: "X" },
+  { slug: "linkedin",  name: "LinkedIn",     color: "#0A66C2", initials: "In" },
+  { slug: "youtube",   name: "YouTube",      color: "#FF0000", initials: "Yt" },
+  { slug: "whatsapp",  name: "WhatsApp",     color: "#25D366", initials: "Wa" },
+  { slug: "telegram",  name: "Telegram",     color: "#29A9EB", initials: "Tg" },
+  { slug: "snapchat",  name: "Snapchat",     color: "#FFFC00", initials: "Sc" }
 ];
 const PLATFORM_BY_SLUG = Object.fromEntries(SOCIAL_PLATFORMS.map(p => [p.slug, p]));
 let PLATFORM_ID_BY_SLUG = {}; // filled once social_platforms table is loaded
@@ -1537,14 +1537,14 @@ const ICONS = {
 // up big — vector paths stay crisp at any zoom, where text initials just
 // looked blurry/generic once enlarged.
 const PLATFORM_ICON_SVGS = {
-  facebook: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M15.5 8.5h2V5.6c-.35-.05-1.55-.15-2.95-.15-2.92 0-4.92 1.83-4.92 5.2v2.75H6.75v3.3h2.88V21h3.4v-6.7h2.76l.44-3.3h-3.2V10.9c0-.96.26-1.6 1.47-1.6Z"/></svg>',
-  instagram: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="4" width="16" height="16" rx="4.5"/><circle cx="12" cy="12" r="3.4"/><circle cx="16.4" cy="7.6" r="0.9" fill="#fff" stroke="none"/></svg>',
-  twitter: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M5 5l14 14M19 5 5 19" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>',
-  linkedin: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><rect x="4.5" y="9.5" width="2.8" height="9" /><circle cx="5.9" cy="6" r="1.7"/><path d="M10 9.5h2.7v1.3c.5-.85 1.5-1.55 3.05-1.55 3 0 3.75 1.75 3.75 4.4v5.35h-2.8v-4.75c0-1.2-.35-2.05-1.55-2.05-1.15 0-1.7.75-1.7 2.05v4.75H10V9.5Z"/></svg>',
-  youtube: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><rect x="3.5" y="6.5" width="17" height="11" rx="3.2"/><path d="M10.5 9.8v4.4l4-2.2-4-2.2Z" fill="#0a0d1c"/></svg>',
-  whatsapp: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M12 4.5a7.4 7.4 0 0 0-6.35 11.2L4.5 19.5l3.95-1.1A7.4 7.4 0 1 0 12 4.5Z" fill="none" stroke="#fff" stroke-width="1.7"/><path d="M9.2 9.6c.2-.5.4-.5.6-.5h.45c.15 0 .35 0 .5.4.2.5.65 1.7.7 1.8.05.15.1.3 0 .5-.1.2-.15.3-.3.45-.15.15-.3.35-.45.45-.15.15-.3.3-.15.6.15.3.7 1.15 1.5 1.85 1 .9 1.85 1.2 2.15 1.35.3.15.5.1.65-.1.2-.2.7-.85.9-1.15.2-.3.4-.25.65-.15.25.1 1.65.8 1.9.95.25.15.45.2.5.35.05.15.05.85-.2 1.65-.25.8-1.5 1.45-2.1 1.5-.55.1-1.2.15-1.95-.1a11 11 0 0 1-1.15-.4C11 18.7 8.3 16.9 7.3 14.2c-.15-.4-.25-.75-.25-1.1 0-.65.35-1.25.55-1.5.2-.25.5-.25.65-.25Z" fill="#fff"/></svg>',
-  telegram: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 12.2 18.7 6.4c.65-.25 1.25.35.95 1.05l-2.8 11.7c-.2.85-.75 1.05-1.35.65l-3.5-2.6-1.7 1.65c-.2.2-.4.3-.7.3l.25-3.55 6.4-5.85c.3-.25-.05-.4-.4-.15l-7.9 5-3.4-1.05c-.75-.25-.75-.75.15-1.15Z"/></svg>',
-  snapchat: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M12 4.2c2.2 0 3.6 1.75 3.5 3.85-.05.9-.1 1.6 0 2.05.1.05.5.15.95-.1.35-.2.85 0 .8.5-.05.5-.75.85-1.25 1.1-.3.15-.35.35-.25.6.35.9 1.5 1.55 2.5 1.7.3.05.35.35.1.6-.35.35-1.1.55-1.6.65-.15.35-.1.65-.35.85-.35.25-1.35.05-2.15.35-.7.25-1.15 1.35-2.25 1.35s-1.55-1.1-2.25-1.35c-.8-.3-1.8-.1-2.15-.35-.25-.2-.2-.5-.35-.85-.5-.1-1.25-.3-1.6-.65-.25-.25-.2-.55.1-.6 1-.15 2.15-.8 2.5-1.7.1-.25.05-.45-.25-.6-.5-.25-1.2-.6-1.25-1.1-.05-.5.45-.7.8-.5.45.25.85.15.95.1.1-.45.05-1.15 0-2.05-.1-2.1 1.3-3.85 3.5-3.85Z"/></svg>'
+  facebook: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M15.12 12.3h-2.2V19.5h-2.98V12.3H8.3V9.7h1.64V7.98c0-1.93.87-3.48 3.62-3.48h2.14v2.58h-1.37c-1.03 0-1.13.4-1.13 1.13V9.7h2.52l-.3 2.6Z"/></svg>',
+  instagram: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" xmlns="http://www.w3.org/2000/svg"><rect x="4.3" y="4.3" width="15.4" height="15.4" rx="4.6"/><circle cx="12" cy="12" r="3.65"/><circle cx="16.55" cy="7.45" r="1.05" fill="#fff" stroke="none"/></svg>',
+  twitter: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M6.6 6 11 12.2 6.36 18h1.8l3.9-4.66L15.44 18H19l-4.66-6.53L18.66 6h-1.8l-3.62 4.33L9.98 6H6.6Zm1.75 1.14h1.65l7.36 9.72h-1.62L8.35 7.14Z"/></svg>',
+  linkedin: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><rect x="4.6" y="9.6" width="2.85" height="9" rx="0.3"/><circle cx="6.02" cy="6.35" r="1.75"/><path d="M10.3 9.6h2.75v1.42h.04c.38-.72 1.32-1.5 2.72-1.5 2.9 0 3.44 1.92 3.44 4.42v5.66h-2.85v-5.02c0-1.2-.02-2.74-1.66-2.74-1.67 0-1.93 1.3-1.93 2.65v5.11H10.3V9.6Z"/></svg>',
+  youtube: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><rect x="2.4" y="6.4" width="19.2" height="11.2" rx="3.4"/><path d="M10 9.8v4.4l4-2.2-4-2.2Z" fill="#0a0d1c"/></svg>',
+  whatsapp: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M12 4.3a7.7 7.7 0 0 0-6.6 11.6L4.5 19.7l3.9-1.24A7.7 7.7 0 1 0 12 4.3Zm0 1.4a6.3 6.3 0 1 1-3.36 11.63l-.24-.15-2.35.75.77-2.28-.16-.24A6.3 6.3 0 0 1 12 5.7Z"/><path d="M9.36 8.9c-.18 0-.47.07-.71.34-.24.27-.93.9-.93 2.2s.95 2.56 1.08 2.74c.13.17 1.85 2.93 4.57 4 2.27.88 2.73.71 3.23.66.49-.05 1.58-.64 1.8-1.27.22-.62.22-1.15.15-1.27-.07-.11-.24-.18-.5-.31-.27-.14-1.58-.78-1.82-.87-.25-.09-.42-.14-.6.13-.18.28-.68.87-.84 1.05-.15.18-.31.2-.57.07-.27-.14-1.13-.42-2.15-1.32-.8-.7-1.33-1.57-1.49-1.85-.15-.27-.02-.42.12-.55.12-.13.27-.32.4-.48.14-.16.18-.28.27-.46.09-.18.05-.34-.02-.48-.07-.14-.6-1.46-.83-2-.22-.53-.44-.45-.6-.46l-.51-.01Z"/></svg>',
+  telegram: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M4.8 11.86 18.4 6.6c.63-.25 1.2.15.98 1.1l-2.36 11.1c-.18.83-.68 1.03-1.37.64l-3.8-2.8-1.83 1.77c-.2.2-.38.37-.77.37l.28-3.9 7.1-6.42c.31-.28-.07-.43-.48-.16l-8.77 5.53-3.78-1.18c-.82-.26-.83-.82.15-1.21Z"/></svg>',
+  snapchat: '<svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M12 3.9c2.42 0 3.96 1.93 3.85 4.27-.06.98-.1 1.75.02 2.25.12.06.55.16 1.03-.12.4-.22.94 0 .9.55-.06.55-.83.94-1.4 1.2-.32.16-.38.37-.27.66.4.98 1.68 1.7 2.78 1.88.32.06.38.38.1.65-.4.4-1.24.6-1.79.72-.16.4-.1.72-.4.95-.4.28-1.55.06-2.47.4-.8.28-1.32 1.5-2.55 1.5s-1.75-1.22-2.55-1.5c-.92-.34-2.07-.12-2.47-.4-.3-.23-.24-.55-.4-.95-.55-.12-1.4-.32-1.79-.72-.28-.27-.22-.6.1-.65 1.1-.18 2.38-.9 2.78-1.88.11-.29.05-.5-.27-.66-.57-.26-1.34-.65-1.4-1.2-.05-.55.5-.77.9-.55.48.28.9.18 1.03.12.12-.5.06-1.27 0-2.25-.1-2.34 1.44-4.27 3.85-4.27Z"/></svg>'
 };
 
 function platformIconHtml(slug) {

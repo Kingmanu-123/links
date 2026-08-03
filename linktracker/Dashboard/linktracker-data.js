@@ -29,16 +29,30 @@
   // platform badge/name always matches what the Link Tracker app itself
   // would show for the same slug.
   const SOCIAL_PLATFORMS = [
-    { slug: "facebook",  name: "Facebook",     color: "#3b82f6" },
-    { slug: "instagram", name: "Instagram",    color: "#ec4899" },
-    { slug: "twitter",   name: "X / Twitter",  color: "#38bdf8" },
-    { slug: "linkedin",  name: "LinkedIn",     color: "#0ea5e9" },
-    { slug: "youtube",   name: "YouTube",      color: "#f87171" },
-    { slug: "whatsapp",  name: "WhatsApp",     color: "#34d399" },
-    { slug: "telegram",  name: "Telegram",     color: "#5eead4" },
-    { slug: "snapchat",  name: "Snapchat",     color: "#fbbf24" }
+    { slug: "facebook",  name: "Facebook",     color: "#1877F2" },
+    { slug: "instagram", name: "Instagram",    color: "linear-gradient(135deg, #FEDA75, #FA7E1E, #D62976, #962FBF, #4F5BD5)" },
+    { slug: "twitter",   name: "X / Twitter",  color: "#000000" },
+    { slug: "linkedin",  name: "LinkedIn",     color: "#0A66C2" },
+    { slug: "youtube",   name: "YouTube",      color: "#FF0000" },
+    { slug: "whatsapp",  name: "WhatsApp",     color: "#25D366" },
+    { slug: "telegram",  name: "Telegram",     color: "#29A9EB" },
+    { slug: "snapchat",  name: "Snapchat",     color: "#FFFC00" }
   ];
   const PLATFORM_BY_SLUG = Object.fromEntries(SOCIAL_PLATFORMS.map(p => [p.slug, p]));
+
+  // Self-contained modern brand icons (background + glyph baked into each
+  // SVG) — same visual language as the Link Tracker app's own icon set, so
+  // a platform looks identical whichever app it's viewed in.
+  const PLATFORM_ICON_SVGS = {
+    facebook: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="12" fill="#1877F2"/><path d="M15.12 12.3h-2.2V19.5h-2.98V12.3H8.3V9.7h1.64V7.98c0-1.93.87-3.48 3.62-3.48h2.14v2.58h-1.37c-1.03 0-1.13.4-1.13 1.13V9.7h2.52l-.3 2.6Z" fill="#fff"/></svg>',
+    instagram: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="igGradDash" x1="0" y1="24" x2="24" y2="0"><stop offset="0%" stop-color="#FEDA75"/><stop offset="30%" stop-color="#FA7E1E"/><stop offset="60%" stop-color="#D62976"/><stop offset="85%" stop-color="#962FBF"/><stop offset="100%" stop-color="#4F5BD5"/></linearGradient></defs><rect width="24" height="24" rx="6.5" fill="url(#igGradDash)"/><rect x="6.2" y="6.2" width="11.6" height="11.6" rx="3.6" fill="none" stroke="#fff" stroke-width="1.6"/><circle cx="12" cy="12" r="3.1" fill="none" stroke="#fff" stroke-width="1.6"/><circle cx="16.1" cy="7.9" r="1" fill="#fff"/></svg>',
+    twitter: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect width="24" height="24" rx="6.5" fill="#000"/><path d="M6.6 6 11 12.2 6.36 18h1.8l3.9-4.66L15.44 18H19l-4.66-6.53L18.66 6h-1.8l-3.62 4.33L9.98 6H6.6Z" fill="#fff"/></svg>',
+    linkedin: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect width="24" height="24" rx="6.5" fill="#0A66C2"/><rect x="5.6" y="9.6" width="2.85" height="9" fill="#fff"/><circle cx="7.02" cy="6.35" r="1.75" fill="#fff"/><path d="M10.3 9.6h2.75v1.42h.04c.38-.72 1.32-1.5 2.72-1.5 2.9 0 3.44 1.92 3.44 4.42v5.66h-2.85v-5.02c0-1.2-.02-2.74-1.66-2.74-1.67 0-1.93 1.3-1.93 2.65v5.11H10.3V9.6Z" fill="#fff"/></svg>',
+    youtube: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect width="24" height="24" rx="7" fill="#FF0000"/><path d="M9.8 8.3v7.4l6.4-3.7-6.4-3.7Z" fill="#fff"/></svg>',
+    whatsapp: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="12" fill="#25D366"/><path d="M12 6.2a5.8 5.8 0 0 0-4.96 8.8l.16.26-.6 2.2 2.26-.6.25.15A5.8 5.8 0 1 0 12 6.2Z" fill="none" stroke="#fff" stroke-width="1.3"/><path d="M9.3 8.9c.18-.4.35-.4.5-.4h.4c.13 0 .3 0 .45.35.17.4.56 1.4.6 1.5.05.13.08.27 0 .43-.08.16-.13.26-.26.4-.13.13-.27.3-.38.4-.13.13-.26.26-.11.5.14.27.6 1 1.3 1.6.86.78 1.6 1.04 1.86 1.16.27.13.43.1.58-.08.18-.18.6-.73.78-1 .17-.26.34-.2.56-.13.22.09 1.4.68 1.64.8.22.14.38.18.44.28.05.13.05.72-.18 1.42-.22.7-1.28 1.24-1.8 1.28-.48.08-1.03.13-1.66-.09a9.5 9.5 0 0 1-.98-.35c-2.35-1-3.85-3.44-3.97-3.6-.13-.17-.94-1.25-.94-2.38 0-1.13.6-1.68.8-1.9Z" fill="#fff"/></svg>',
+    telegram: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="12" fill="#29A9EB"/><path d="M6.1 11.9 17.3 7.4c.55-.22 1.1.15.9.98l-2 9.6c-.14.7-.55.86-1.1.54l-3.1-2.3-1.5 1.45c-.17.17-.31.31-.6.31l.2-3 5.6-5.1c.24-.22-.06-.34-.36-.13l-6.9 4.4-3-.94c-.65-.2-.66-.65.16-.97Z" fill="#fff"/></svg>',
+    snapchat: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect width="24" height="24" rx="6.5" fill="#FFFC00"/><path d="M12 5.8c2.05 0 3.35 1.7 3.25 3.75-.05.85-.1 1.5 0 1.9.1.06.5.14.9-.1.34-.18.8 0 .76.47-.05.47-.7.8-1.18 1.03-.28.14-.33.32-.24.56.33.83 1.4 1.44 2.34 1.58.28.05.33.32.1.55-.33.33-1.04.5-1.5.6-.14.33-.1.6-.33.8-.33.24-1.27.05-2.02.33-.66.24-1.08 1.27-2.12 1.27s-1.46-1.03-2.12-1.27c-.75-.28-1.7-.1-2.02-.33-.24-.2-.2-.47-.33-.8-.47-.1-1.17-.28-1.5-.6-.24-.24-.19-.5.1-.55.94-.14 2.02-.75 2.34-1.58.1-.24.05-.42-.24-.56-.47-.23-1.13-.56-1.18-1.03-.05-.47.42-.65.76-.47.4.23.8.16.9.1.1-.4.05-1.05 0-1.9-.1-2.05 1.2-3.75 3.25-3.75Z" fill="#000"/></svg>'
+  };
 
   const state = {
     links: [],
@@ -239,6 +253,7 @@
   window.LinkTrackerData = {
     BASE_URL,
     PLATFORM_BY_SLUG,
+    PLATFORM_ICON_SVGS,
     SOCIAL_PLATFORMS,
     state,
     loadLinks,

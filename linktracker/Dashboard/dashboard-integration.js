@@ -257,10 +257,14 @@
     wrap.innerHTML = top.map(([slug, count]) => {
       const meta = LT.PLATFORM_BY_SLUG[slug] || { name: slug };
       const pct = total ? Math.round((count / total) * 100) : 0;
+      const iconSvg = (LT.PLATFORM_ICON_SVGS && LT.PLATFORM_ICON_SVGS[slug]) || '';
       const initials = LT.escapeHtml((meta.name || slug).slice(0, 2).toUpperCase());
+      const iconInner = iconSvg
+        ? iconSvg
+        : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:${meta.color || '#4f8ef7'};color:#fff;font-size:9px;font-weight:700;border-radius:8px;">${initials}</div>`;
       return `
         <div class="platform-item">
-          <div class="platform-icon" style="background:${meta.color || '#4f8ef7'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700;border-radius:8px;">${initials}</div>
+          <div class="platform-icon platform-icon--${slug}">${iconInner}</div>
           <div class="platform-info">
             <span class="platform-name">${LT.escapeHtml(meta.name || slug)}</span>
             <div class="platform-bar-wrap">

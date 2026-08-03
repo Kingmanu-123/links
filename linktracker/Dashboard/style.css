@@ -509,9 +509,11 @@ html, body {
   width:clamp(20px, 4vh, 28px); height:clamp(20px, 4vh, 28px); border-radius:10px;
   background:rgba(8,22,48,0.5); border:1px solid var(--glass-b);
   display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  overflow:hidden;
 }
-.platform-info  { flex:1; display:flex; flex-direction:column; gap:4px; }
-.platform-name  { font-size:11.5px; font-weight:600; color:var(--txt1); }
+.platform-icon svg { width:100%; height:100%; display:block; flex-shrink:0; }
+.platform-info  { flex:1; display:flex; flex-direction:column; gap:4px; min-width:0; }
+.platform-name  { font-size:11.5px; font-weight:600; color:var(--txt1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .platform-bar   { height:clamp(3px, 0.6vh, 4px); background:rgba(255,255,255,0.06); border-radius:3px; overflow:hidden; }
 .platform-bar-fill { height:100%; border-radius:3px; transition:width 1.2s ease; }
 .platform-pct   { font-size:11.5px; font-weight:700; color:var(--txt1); width:32px; flex-shrink:0; text-align:right; }

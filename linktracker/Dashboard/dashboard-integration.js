@@ -40,7 +40,7 @@
     'nav-overview':  null, // stays on this page
     'nav-links':     LINK_TRACKER_URL + '#all',
     'nav-campaigns': LINK_TRACKER_URL + '#all',
-    'nav-analytics': LINK_TRACKER_URL + '#dashboard',
+    'nav-analytics': 'analytics.html', // real in-app Analytics page (day/month/year, realtime)
     'nav-users':     LINK_TRACKER_URL + '#users',
     'nav-platforms': LINK_TRACKER_URL + '#all',
     'nav-tags':      LINK_TRACKER_URL + '#all'

@@ -6100,3 +6100,313 @@ body.theme-lumina .grid-kebab-menu {
     width: 1550px;
   }
 }
+
+/* ==========================================================================
+   NAVIGATION DRAWER — cross-page nav (Create Link / All Links / All Users /
+   Dashboard / Analytics). Lives outside the .page views as a slide-in
+   overlay so none of the existing Create Link, All Links or All Users
+   layouts shift or resize when it opens.
+
+   Styled to match the OceanGlass Dashboard's own sidebar (.sidebar /
+   .nav-item in dashboard/style.css) pixel-for-pixel — same deep-sea glass
+   panel, same cyan/blue accent, same nav-item active glow — since this
+   drawer is the shared nav surface between the two connected apps. Kept
+   deliberately independent of the --teal/--purple root theme so it reads
+   identically no matter which Link Tracker theme (Winter Peaks / Aurora
+   Glass / Lumina) is active, exactly like the Dashboard sidebar always
+   looks the same regardless of what page it's on.
+   ========================================================================== */
+
+.ltnav-drawer,
+.ltnav-close,
+#ltnav-backdrop {
+  --ln-cyan:    #00d4ff;
+  --ln-blue:    #1a6fff;
+  --ln-txt1:    #dff4ff;
+  --ln-txt2:    #7aadcc;
+  --ln-txt3:    #3d6e8c;
+  --ln-glass:   rgba(8, 22, 48, 0.86);
+  --ln-glass-b: rgba(0, 200, 255, 0.16);
+}
+
+/* Toggle button — same circular "mobile-menu-btn" treatment the Dashboard
+   uses for its own hamburger, placed in the same leading slot of the
+   header on every Link Tracker page (Create Link, All Links, All Users). */
+.ltnav-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: rgba(10, 24, 52, 0.6);
+  border: 1px solid rgba(0, 200, 255, 0.14);
+  color: #7aadcc;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.ltnav-toggle svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.ltnav-toggle:hover {
+  background: rgba(0, 212, 255, 0.1);
+  color: #00d4ff;
+  border-color: rgba(0, 212, 255, 0.36);
+}
+
+.ltnav-toggle:active {
+  transform: scale(0.94);
+}
+
+.all-links-top {
+  gap: 0.75rem;
+}
+
+/* Backdrop — same rgba(0,6,16,.55) + opacity fade the Dashboard's mobile
+   drawer backdrop uses. */
+.ltnav-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 6, 16, 0.55);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 850;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+
+.ltnav-backdrop.is-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* Drawer panel — same glass card as .sidebar in dashboard/style.css:
+   deep-sea tint, 1px cyan-tinted border, heavy blur, right-rounded since
+   it's docked to the left edge of the viewport. */
+.ltnav-drawer {
+  position: fixed;
+  top: 12px;
+  bottom: 12px;
+  left: 0;
+  width: 240px;
+  max-width: 84vw;
+  display: flex;
+  flex-direction: column;
+  background: var(--ln-glass);
+  border: 1px solid var(--ln-glass-b);
+  border-left: none;
+  border-radius: 0 26px 26px 0;
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  box-shadow: 12px 0 40px rgba(0, 10, 30, 0.45);
+  transform: translateX(-100%);
+  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 851;
+  /* Deliberately NOT overflow:hidden here — .ltnav-close sits partway
+     outside this box (right: -13px) the same way the Dashboard's own
+     .sidebar-toggle sits outside .sidebar; only .ltnav-drawer-inner (the
+     scrolling nav list) clips its own content, so the close button never
+     gets cut off. */
+}
+
+.ltnav-drawer.is-open {
+  transform: translateX(0);
+}
+
+.ltnav-drawer-inner {
+  flex: 1;
+  min-height: 0;
+  padding: 20px 14px 16px;
+  overflow-y: auto;
+}
+
+/* Logo row — matches .sidebar-logo exactly: gradient icon chip, name in
+   cyan, sub-label in dim blue-gray, bottom divider. */
+.ltnav-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 2px 14px;
+  border-bottom: 1px solid rgba(0, 180, 220, 0.1);
+  margin-bottom: 12px;
+}
+
+.ltnav-logo-icon {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 45%, #00d4ff 0%, #1a6fff 100%);
+  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.25), 0 6px 18px rgba(0, 100, 255, 0.4);
+}
+
+.ltnav-logo-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.ltnav-logo-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.ltnav-logo-name {
+  font-family: var(--font-display);
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ln-cyan);
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.ltnav-logo-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ln-txt3);
+  font-weight: 400;
+}
+
+.ltnav-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ltnav-section-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ln-txt3);
+  padding: 10px 13px 4px;
+}
+
+.ltnav-section-label:first-child {
+  padding-top: 2px;
+}
+
+/* Nav items — matches .nav-item exactly: same padding/radius, same hover
+   tint, same active state (blue fill + cyan border + glow, cyan icon). */
+.ltnav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 13px;
+  border-radius: 13px;
+  color: var(--ln-txt2);
+  background: transparent;
+  border: 1px solid transparent;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.ltnav-item:hover {
+  background: rgba(0, 212, 255, 0.07);
+  color: var(--ln-txt1);
+}
+
+.ltnav-item.active {
+  background: rgba(26, 111, 255, 0.26);
+  color: #ffffff;
+  border-color: rgba(0, 212, 255, 0.24);
+  box-shadow: 0 2px 16px rgba(0, 80, 255, 0.22), inset 0 1px 0 rgba(0, 212, 255, 0.1);
+}
+
+.ltnav-item.active .ltnav-icon {
+  color: var(--ln-cyan);
+}
+
+.ltnav-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+
+.ltnav-icon svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.ltnav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ltnav-external {
+  flex-shrink: 0;
+  color: var(--ln-txt3);
+}
+
+/* Close control — same circular edge button treatment as the Dashboard's
+   .sidebar-toggle collapse arrow, anchored to the drawer's right edge. */
+.ltnav-close {
+  position: absolute;
+  top: 22px;
+  right: -13px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(0, 212, 255, 0.14);
+  border: 1px solid rgba(0, 212, 255, 0.22);
+  color: var(--ln-cyan);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+  z-index: 852;
+}
+
+.ltnav-close svg {
+  width: 13px;
+  height: 13px;
+  display: block;
+}
+
+.ltnav-close:hover {
+  background: rgba(0, 212, 255, 0.28);
+}
+
+@media (max-width: 480px) {
+  .ltnav-drawer {
+    width: 84vw;
+    max-width: 260px;
+    border-radius: 0 20px 20px 0;
+  }
+  .ltnav-close {
+    right: -13px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ltnav-drawer,
+  .ltnav-backdrop {
+    transition: none;
+  }
+}

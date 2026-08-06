@@ -112,6 +112,16 @@ const linksUsersBtn = document.getElementById("links-users-btn");
 const usersHomeBtn = document.getElementById("users-home-btn");
 const usersLinksBtn = document.getElementById("users-links-btn");
 
+// DOM Elements — navigation drawer (Create Link / All Links / All Users /
+// Dashboard / Analytics), shared across all three .page views
+const ltnavToggleBtns = document.querySelectorAll(".ltnav-toggle");
+const ltnavDrawer = document.getElementById("ltnav-drawer");
+const ltnavBackdrop = document.getElementById("ltnav-backdrop");
+const ltnavCloseBtn = document.getElementById("ltnav-close");
+const ltnavItemCreate = document.getElementById("ltnav-item-create");
+const ltnavItemLinks = document.getElementById("ltnav-item-links");
+const ltnavItemUsers = document.getElementById("ltnav-item-users");
+
 let currentView = "dashboard"; // dashboard | all | users
 
 // DOM Elements — all links view
@@ -466,6 +476,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const deepLinkView = (location.hash || "").replace("#", "");
   if (deepLinkView === "all" || deepLinkView === "users") {
     switchView(deepLinkView);
+  } else {
+    updateLtnavActiveState(currentView);
   }
 
   createBtn.addEventListener("click", handleCreateLink);
@@ -503,6 +515,39 @@ document.addEventListener("DOMContentLoaded", () => {
   usersHomeBtn.addEventListener("click", () => switchView("dashboard"));
   usersLinksBtn.addEventListener("click", () => { linksPage = 1; switchView("all"); });
   themeToggleBtn.addEventListener("click", toggleTheme);
+
+  // Navigation drawer — one shared panel (lives outside the .page views)
+  // opened from a hamburger button placed in the header of each page.
+  if (ltnavDrawer && ltnavBackdrop) {
+    const openLtnav = () => {
+      ltnavDrawer.classList.add("is-open");
+      ltnavBackdrop.classList.add("is-open");
+      ltnavDrawer.setAttribute("aria-hidden", "false");
+      ltnavToggleBtns.forEach(btn => btn.setAttribute("aria-expanded", "true"));
+    };
+    const closeLtnav = () => {
+      ltnavDrawer.classList.remove("is-open");
+      ltnavBackdrop.classList.remove("is-open");
+      ltnavDrawer.setAttribute("aria-hidden", "true");
+      ltnavToggleBtns.forEach(btn => btn.setAttribute("aria-expanded", "false"));
+    };
+
+    ltnavToggleBtns.forEach(btn => btn.addEventListener("click", openLtnav));
+    ltnavBackdrop.addEventListener("click", closeLtnav);
+    if (ltnavCloseBtn) ltnavCloseBtn.addEventListener("click", closeLtnav);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && ltnavDrawer.classList.contains("is-open")) closeLtnav();
+    });
+
+    // Internal nav items reuse the existing view-switching handlers so
+    // behavior (pagination reset, users-view setup, etc.) stays identical
+    // to the buttons already on each page — the drawer just closes after.
+    if (ltnavItemCreate) ltnavItemCreate.addEventListener("click", () => { switchView("dashboard"); closeLtnav(); });
+    if (ltnavItemLinks) ltnavItemLinks.addEventListener("click", () => { linksPage = 1; switchView("all"); closeLtnav(); });
+    if (ltnavItemUsers) ltnavItemUsers.addEventListener("click", () => { openUsersView(); closeLtnav(); });
+    // Dashboard / Analytics items are plain external links (target="_blank")
+    // and need no JS — they don't switch an internal view.
+  }
 
   // Each render fully rebuilds the listing (container.innerHTML = ""
   // then re-appends every card), which replays each card's entrance
@@ -682,11 +727,21 @@ function openUsersView(linkCode, highlight) {
   switchView("users");
 }
 
+// Keeps the nav-drawer's highlighted item in sync with whichever .page
+// view is currently visible — called from switchView so it stays correct
+// no matter which button/deep-link triggered the change.
+function updateLtnavActiveState(view) {
+  if (ltnavItemCreate) ltnavItemCreate.classList.toggle("active", view === "dashboard");
+  if (ltnavItemLinks) ltnavItemLinks.classList.toggle("active", view === "all");
+  if (ltnavItemUsers) ltnavItemUsers.classList.toggle("active", view === "users");
+}
+
 function switchView(view) {
   currentView = view;
   dashboardView.hidden = view !== "dashboard";
   allLinksView.hidden = view !== "all";
   allUsersView.hidden = view !== "users";
+  updateLtnavActiveState(view);
 
   if (view === "all") {
     if (linksLoaded) { renderAllLinks(); } else { renderSkeletonRows(allTableBody, 6); document.getElementById("links-pagination").innerHTML = ""; }
